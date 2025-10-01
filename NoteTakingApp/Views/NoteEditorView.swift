@@ -1,0 +1,549 @@
+import SwiftUI
+import PencilKit
+
+// MARK: - Constants
+
+private enum EditorConstants {
+    static let thumbnailDebounceDelay: TimeInterval = 0.5
+    static let toolPickerInitialDelay: TimeInterval = 0.4
+    static let toolPickerRetryDelay: TimeInterval = 0.1
+    static let toolPickerFirstResponderDelay: TimeInterval = 0.2
+}
+
+struct NoteEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var note: Note
+    @State private var currentPageIndex: Int = 0
+    @State private var showPageThumbnails = true
+    @State private var currentDrawing: PKDrawing = PKDrawing()
+    @State private var previousPageIndex: Int = 0
+    @State private var skipOnChange: Bool = false
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var lastZoomScale: CGFloat = 1.0
+
+    let viewModel: NotesViewModel
+
+    init(note: Note, viewModel: NotesViewModel) {
+        _note = State(initialValue: note)
+        self.viewModel = viewModel
+    }
+
+    private var isPageValid: Bool {
+        !note.pages.isEmpty && currentPageIndex >= 0 && currentPageIndex < note.pages.count
+    }
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    if isPageValid {
+                        // Current page view
+                        ZStack {
+                            // White background
+                            Color.white
+                                .ignoresSafeArea()
+
+                            // Template background - with ID to force re-render
+                            PageTemplateView(
+                                template: note.pages[currentPageIndex].template,
+                                size: geometry.size
+                            )
+                            .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)")
+                            .allowsHitTesting(false)
+
+                            // Canvas for drawing (only one instance)
+                            CanvasView(
+                                drawing: $currentDrawing,
+                                onDrawingChanged: { drawing in
+                                    // Update binding immediately to prevent drawing from disappearing
+                                    currentDrawing = drawing
+                                }
+                            )
+                        }
+                        .scaleEffect(zoomScale)
+                        .gesture(
+                            MagnificationGesture()
+                                .onChanged { value in
+                                    let delta = value / lastZoomScale
+                                    lastZoomScale = value
+                                    let newScale = zoomScale * delta
+                                    // Clamp zoom between 0.5x and 3.0x
+                                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
+                                        zoomScale = min(max(newScale, 0.5), 3.0)
+                                    }
+                                }
+                                .onEnded { value in
+                                    lastZoomScale = 1.0
+                                }
+                        )
+                        .simultaneousGesture(
+                            TapGesture(count: 2)
+                                .onEnded {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        zoomScale = 1.0
+                                    }
+                                }
+                        )
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 30)
+                                .onEnded { value in
+                                    if value.translation.width < -50 && currentPageIndex < note.pages.count - 1 {
+                                        // Swipe left - next page
+                                        nextPage()
+                                    } else if value.translation.width > 50 && currentPageIndex > 0 {
+                                        // Swipe right - previous page
+                                        previousPage()
+                                    }
+                                }
+                        )
+                        .overlay(pageIndicator)
+                    } else {
+                        // Error state
+                        VStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.red)
+                            Text("Error loading page")
+                                .font(.headline)
+                                .padding()
+                        }
+                    }
+
+                    // Page thumbnails sidebar
+                    if showPageThumbnails {
+                        PageThumbnailsView(
+                            pages: $note.pages,
+                            currentPageIndex: $currentPageIndex,
+                            onAddPage: {
+                                addPage()
+                            },
+                            onDeletePage: { index in
+                                deletePage(at: index)
+                            }
+                        )
+                    }
+                }
+            }
+            .navigationTitle(note.name)
+            .onChange(of: currentPageIndex) { oldIndex, newIndex in
+                // Skip if flagged (e.g., during addPage/deletePage which handle their own loading)
+                if skipOnChange {
+                    skipOnChange = false
+                    return
+                }
+
+                // Save drawing when page changes (via swipe, thumbnail tap, etc.)
+                if oldIndex >= 0 && oldIndex < note.pages.count && oldIndex != newIndex {
+                    print("📄 Page changed from \(oldIndex) to \(newIndex), saving and loading")
+
+                    // Save the current drawing to the OLD page (before we load the new page)
+                    updateDrawing(at: oldIndex, with: currentDrawing)
+
+                    // Now load the new page
+                    loadCurrentPage()
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    doneButton
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    toolbarControls
+                }
+            }
+            .onAppear {
+                print("🚀 NoteEditorView appeared")
+                print("📊 Note: \(note.name)")
+                print("📊 Total pages: \(note.pages.count)")
+                print("📊 Current page index: \(currentPageIndex)")
+
+                // Ensure valid page index
+                if currentPageIndex >= note.pages.count {
+                    print("⚠️ Page index out of bounds, adjusting: \(currentPageIndex) -> \(max(0, note.pages.count - 1))")
+                    currentPageIndex = max(0, note.pages.count - 1)
+                }
+                if currentPageIndex < 0 {
+                    print("⚠️ Page index negative, adjusting to 0")
+                    currentPageIndex = 0
+                }
+                loadCurrentPage()
+            }
+        }
+    }
+
+    private var pageIndicator: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("Page \(currentPageIndex + 1) of \(note.pages.count)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(.regularMaterial)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+                .padding(16)
+            }
+        }
+    }
+
+    private var doneButton: some View {
+        Button {
+            saveAndDismiss()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark")
+                    .font(.subheadline.weight(.semibold))
+                Text("Done")
+                    .font(.body.weight(.medium))
+            }
+            .foregroundStyle(.blue)
+        }
+    }
+
+    private var toolbarControls: some View {
+        HStack(spacing: 12) {
+            // Template picker
+            if currentPageIndex >= 0 && currentPageIndex < note.pages.count {
+                Menu {
+                    Button {
+                        changeTemplate(to: .blank)
+                    } label: {
+                        if note.pages[currentPageIndex].template == .blank {
+                            Label("Blank", systemImage: "checkmark")
+                        } else {
+                            Text("Blank")
+                        }
+                    }
+
+                    Button {
+                        changeTemplate(to: .grid)
+                    } label: {
+                        if note.pages[currentPageIndex].template == .grid {
+                            Label("Grid", systemImage: "checkmark")
+                        } else {
+                            Text("Grid")
+                        }
+                    }
+
+                    Button {
+                        changeTemplate(to: .dotted)
+                    } label: {
+                        if note.pages[currentPageIndex].template == .dotted {
+                            Label("Dotted", systemImage: "checkmark")
+                        } else {
+                            Text("Dotted")
+                        }
+                    }
+
+                    Button {
+                        changeTemplate(to: .lined)
+                    } label: {
+                        if note.pages[currentPageIndex].template == .lined {
+                            Label("Lined", systemImage: "checkmark")
+                        } else {
+                            Text("Lined")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "square.grid.3x3")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.blue)
+                }
+
+                Divider()
+                    .frame(height: 20)
+            }
+
+            // Sidebar toggle
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showPageThumbnails.toggle()
+                }
+            } label: {
+                Image(systemName: showPageThumbnails ? "sidebar.right" : "sidebar.left")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.blue)
+            }
+        }
+    }
+
+    private func updateDrawing(at index: Int, with drawing: PKDrawing) {
+        guard index >= 0 && index < note.pages.count else {
+            print("⚠️ Cannot update drawing - invalid index: \(index)")
+            return
+        }
+
+        print("✏️ Updating drawing for page \(index)")
+        note.updatePage(at: index, with: drawing)
+
+        // Debounce thumbnail generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + EditorConstants.thumbnailDebounceDelay) {
+            guard index < note.pages.count else { return }
+            print("📸 Generating thumbnail for page \(index)")
+            note.generateThumbnail(for: index) { thumbnailData in
+                if let data = thumbnailData, index < note.pages.count {
+                    note.pages[index].thumbnail = data
+                }
+            }
+        }
+    }
+
+    private func loadCurrentPage() {
+        guard !note.pages.isEmpty else {
+            print("⚠️ Cannot load page - no pages available")
+            currentDrawing = PKDrawing()
+            return
+        }
+
+        // Ensure valid index
+        if currentPageIndex < 0 || currentPageIndex >= note.pages.count {
+            print("⚠️ Invalid page index: \(currentPageIndex), adjusting to 0")
+            currentPageIndex = 0
+        }
+
+        print("📄 Loading page \(currentPageIndex)")
+        currentDrawing = note.pages[currentPageIndex].drawing
+    }
+
+    private func nextPage() {
+        guard currentPageIndex < note.pages.count - 1 else {
+            print("⚠️ Cannot go to next page - already at last page")
+            return
+        }
+
+        print("➡️ Moving to next page: \(currentPageIndex) -> \(currentPageIndex + 1)")
+
+        // Just change the index - onChange will handle saving and loading
+        withAnimation(.easeInOut(duration: 0.3)) {
+            currentPageIndex += 1
+        }
+    }
+
+    private func previousPage() {
+        guard currentPageIndex > 0 else {
+            print("⚠️ Cannot go to previous page - already at first page")
+            return
+        }
+
+        print("⬅️ Moving to previous page: \(currentPageIndex) -> \(currentPageIndex - 1)")
+
+        // Just change the index - onChange will handle saving and loading
+        withAnimation(.easeInOut(duration: 0.3)) {
+            currentPageIndex -= 1
+        }
+    }
+
+    private func addPage() {
+        print("➕ Adding new page. Current count: \(note.pages.count)")
+
+        // Save current page first if valid
+        if isPageValid {
+            updateDrawing(at: currentPageIndex, with: currentDrawing)
+        }
+
+        // Get current page's template to use for new page
+        let templateForNewPage = isPageValid ? note.pages[currentPageIndex].template : .blank
+
+        // Mutate note and update index synchronously to prevent state loss
+        note.addPage(template: templateForNewPage)
+
+        // Skip onChange since we're handling the page load ourselves
+        skipOnChange = true
+        currentPageIndex = note.pages.count - 1
+
+        print("✅ New page added. Total pages: \(note.pages.count), Current index: \(currentPageIndex)")
+
+        // Load new page after state update
+        DispatchQueue.main.async {
+            self.loadCurrentPage()
+        }
+    }
+
+    private func deletePage(at index: Int) {
+        guard note.pages.count > 1 else {
+            print("⚠️ Cannot delete - only one page left")
+            return
+        }
+
+        print("🗑️ Deleting page at index: \(index). Total pages before: \(note.pages.count)")
+
+        // Save current drawing before deleting if valid
+        if index == currentPageIndex && isPageValid {
+            updateDrawing(at: currentPageIndex, with: currentDrawing)
+        }
+
+        // Mutate note and update index synchronously to prevent state loss
+        note.deletePage(at: index)
+
+        // Skip onChange since we're handling the page load ourselves
+        skipOnChange = true
+        if currentPageIndex >= note.pages.count {
+            currentPageIndex = max(0, note.pages.count - 1)
+            print("📍 Adjusted current page index to: \(currentPageIndex)")
+        }
+
+        print("✅ Page deleted. Total pages now: \(note.pages.count)")
+
+        // Load updated page after state update
+        DispatchQueue.main.async {
+            self.loadCurrentPage()
+        }
+    }
+
+    private func changeTemplate(to template: PageTemplate) {
+        guard currentPageIndex >= 0 && currentPageIndex < note.pages.count else {
+            print("⚠️ Cannot change template - invalid page index: \(currentPageIndex)")
+            return
+        }
+        print("🎨 Changing template to: \(template)")
+        note.pages[currentPageIndex].template = template
+        note.pages[currentPageIndex].modifiedAt = Date()
+    }
+
+    private func saveAndDismiss() {
+        print("💾 Saving note and dismissing...")
+
+        // Save current drawing
+        updateDrawing(at: currentPageIndex, with: currentDrawing)
+
+        // Save note
+        viewModel.saveNote(note)
+
+        print("✅ Note saved successfully")
+        dismiss()
+    }
+}
+
+// MARK: - Canvas View Wrapper
+
+struct CanvasView: UIViewRepresentable {
+    @Binding var drawing: PKDrawing
+    let onDrawingChanged: (PKDrawing) -> Void
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        let canvasView = PKCanvasView()
+        canvasView.drawingPolicy = .anyInput  // Allow finger, mouse, trackpad, and Apple Pencil
+        canvasView.backgroundColor = .clear
+        canvasView.isOpaque = false
+        canvasView.drawing = drawing
+        canvasView.delegate = context.coordinator
+
+        // Ensure canvas is transparent and doesn't obscure the template
+        canvasView.layer.isOpaque = false
+
+        print("🖌️ Canvas created (transparent, anyInput), setting up tool picker...")
+
+        // Defer tool picker setup to ensure view hierarchy is ready
+        // Use longer delay on first load to ensure window is available
+        DispatchQueue.main.asyncAfter(deadline: .now() + EditorConstants.toolPickerInitialDelay) {
+            context.coordinator.setupToolPicker(for: canvasView)
+        }
+
+        return canvasView
+    }
+
+    static func dismantleUIView(_ uiView: PKCanvasView, coordinator: Coordinator) {
+        print("🧹 Cleaning up canvas view...")
+        // Properly cleanup first responder status
+        if uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+            print("✅ Canvas resigned first responder")
+        }
+        coordinator.toolPicker?.setVisible(false, forFirstResponder: uiView)
+        coordinator.toolPicker?.removeObserver(uiView)
+        coordinator.toolPicker = nil
+        print("✅ Tool picker cleaned up")
+    }
+
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        // Only update if drawings are actually different
+        let currentData = uiView.drawing.dataRepresentation()
+        let newData = drawing.dataRepresentation()
+
+        if currentData != newData {
+            uiView.drawing = drawing
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDrawingChanged: onDrawingChanged)
+    }
+
+    class Coordinator: NSObject, PKCanvasViewDelegate {
+        let onDrawingChanged: (PKDrawing) -> Void
+        var toolPicker: PKToolPicker?
+        private var isToolPickerSetup = false
+        private var setupWorkItem: DispatchWorkItem?
+
+        init(onDrawingChanged: @escaping (PKDrawing) -> Void) {
+            self.onDrawingChanged = onDrawingChanged
+        }
+
+        deinit {
+            // Clean up work items
+            setupWorkItem?.cancel()
+        }
+
+        func setupToolPicker(for canvasView: PKCanvasView) {
+            // Prevent multiple setup attempts
+            guard !isToolPickerSetup else {
+                return
+            }
+
+            // Cancel any pending setup work
+            setupWorkItem?.cancel()
+
+            // Check if view is in hierarchy
+            guard let window = canvasView.window else {
+                // Schedule retry with cancellable work item
+                let workItem = DispatchWorkItem { [weak self, weak canvasView] in
+                    guard let self = self, let canvasView = canvasView else { return }
+                    self.setupToolPicker(for: canvasView)
+                }
+                setupWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + EditorConstants.toolPickerRetryDelay, execute: workItem)
+                return
+            }
+
+            // Get or create tool picker
+            self.toolPicker = PKToolPicker()
+            self.toolPicker?.setVisible(true, forFirstResponder: canvasView)
+            self.toolPicker?.addObserver(canvasView)
+
+            // Delay becoming first responder slightly to avoid conflicts
+            let workItem = DispatchWorkItem { [weak self, weak canvasView] in
+                guard let self = self, let canvasView = canvasView,
+                      canvasView.window != nil,
+                      !canvasView.isFirstResponder else {
+                    return
+                }
+
+                canvasView.becomeFirstResponder()
+                self.isToolPickerSetup = true
+            }
+            setupWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + EditorConstants.toolPickerFirstResponderDelay, execute: workItem)
+        }
+
+        func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            onDrawingChanged(canvasView.drawing)
+        }
+    }
+}
