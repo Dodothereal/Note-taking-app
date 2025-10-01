@@ -15,7 +15,8 @@ struct NoteEditorView: View {
     @ObservedObject var settings = AppSettings.shared
     @State private var note: Note
     @State private var currentPageIndex: Int = 0
-    @State private var showPageThumbnails = true
+    @State private var showPageThumbnails = false
+    @State private var showNoteSettings = false
     @State private var currentDrawing: PKDrawing = PKDrawing()
     @State private var previousPageIndex: Int = 0
     @State private var skipOnChange: Bool = false
@@ -156,6 +157,9 @@ struct NoteEditorView: View {
                 // Stop auto-save timer
                 stopAutoSave()
             }
+            .sheet(isPresented: $showNoteSettings) {
+                NoteSettingsView(note: $note, currentPageIndex: currentPageIndex)
+            }
         }
     }
 
@@ -204,57 +208,17 @@ struct NoteEditorView: View {
 
     private var toolbarControls: some View {
         HStack(spacing: 12) {
-            // Template picker
-            if currentPageIndex >= 0 && currentPageIndex < note.pages.count {
-                Menu {
-                    Button {
-                        changeTemplate(to: .blank)
-                    } label: {
-                        if note.pages[currentPageIndex].template == .blank {
-                            Label("Blank", systemImage: "checkmark")
-                        } else {
-                            Text("Blank")
-                        }
-                    }
-
-                    Button {
-                        changeTemplate(to: .grid)
-                    } label: {
-                        if note.pages[currentPageIndex].template == .grid {
-                            Label("Grid", systemImage: "checkmark")
-                        } else {
-                            Text("Grid")
-                        }
-                    }
-
-                    Button {
-                        changeTemplate(to: .dotted)
-                    } label: {
-                        if note.pages[currentPageIndex].template == .dotted {
-                            Label("Dotted", systemImage: "checkmark")
-                        } else {
-                            Text("Dotted")
-                        }
-                    }
-
-                    Button {
-                        changeTemplate(to: .lined)
-                    } label: {
-                        if note.pages[currentPageIndex].template == .lined {
-                            Label("Lined", systemImage: "checkmark")
-                        } else {
-                            Text("Lined")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "square.grid.3x3")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(.blue)
-                }
-
-                Divider()
-                    .frame(height: 20)
+            // Note settings button
+            Button {
+                showNoteSettings = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.blue)
             }
+
+            Divider()
+                .frame(height: 20)
 
             // Sidebar toggle
             Button {
@@ -343,11 +307,9 @@ struct NoteEditorView: View {
             updateDrawing(at: currentPageIndex, with: currentDrawing)
         }
 
-        // Get current page's template to use for new page
-        let templateForNewPage = isPageValid ? note.pages[currentPageIndex].template : .blank
-
         // Mutate note and update index synchronously to prevent state loss
-        note.addPage(template: templateForNewPage)
+        // Uses default template from settings
+        note.addPage()
 
         // Skip onChange since we're handling the page load ourselves
         skipOnChange = true
@@ -391,17 +353,6 @@ struct NoteEditorView: View {
             self.loadCurrentPage()
         }
     }
-
-    private func changeTemplate(to template: PageTemplate) {
-        guard currentPageIndex >= 0 && currentPageIndex < note.pages.count else {
-            print("⚠️ Cannot change template - invalid page index: \(currentPageIndex)")
-            return
-        }
-        print("🎨 Changing template to: \(template)")
-        note.pages[currentPageIndex].template = template
-        note.pages[currentPageIndex].modifiedAt = Date()
-    }
-
 
     private func startAutoSave() {
         print("⏰ Starting auto-save timer (every 5 seconds)")
@@ -715,11 +666,25 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         }
 
         @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-            guard let scrollView = gesture.view as? UIScrollView else { return }
+            guard let scrollView = gesture.view as? UIScrollView,
+                  let contentView = contentView else { return }
 
             if scrollView.zoomScale > 1.0 {
-                // Reset to 1.0
-                scrollView.setZoomScale(1.0, animated: true)
+                // Reset to 1.0 and center the content
+                UIView.animate(withDuration: 0.3) {
+                    scrollView.setZoomScale(1.0, animated: false)
+
+                    // Center the content after zoom reset
+                    let contentWidth = contentView.frame.width
+                    let contentHeight = contentView.frame.height
+                    let scrollViewWidth = scrollView.bounds.width
+                    let scrollViewHeight = scrollView.bounds.height
+
+                    let offsetX = max(0, (contentWidth - scrollViewWidth) / 2)
+                    let offsetY = max(0, (contentHeight - scrollViewHeight) / 2)
+
+                    scrollView.contentOffset = CGPoint(x: offsetX, y: offsetY)
+                }
             } else {
                 // Zoom to 2.0 at tap location
                 let location = gesture.location(in: contentView)

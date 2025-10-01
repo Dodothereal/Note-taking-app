@@ -20,8 +20,10 @@ enum PageSize: Codable, Equatable {
     case a4
 
     var size: CGSize {
-        // A4 at 72 DPI: 8.27 × 11.69 inches = 595 × 842 points
-        return CGSize(width: 595, height: 842)
+        // A4 base size at 72 DPI: 8.27 × 11.69 inches = 595 × 842 points
+        // Scale by resolution setting for sharper rendering on retina displays
+        let scale = AppSettings.shared.resolutionScale
+        return CGSize(width: 595 * scale, height: 842 * scale)
     }
 
     var displayName: String {
@@ -79,7 +81,7 @@ struct Note: Identifiable, Codable {
     init(id: UUID = UUID(), name: String, parentFolderID: UUID? = nil, defaultPageSize: PageSize = .a4) {
         self.id = id
         self.name = name
-        self.pages = [NotePage()]
+        self.pages = [NotePage(template: AppSettings.shared.defaultPageTemplate)]
         self.createdAt = Date()
         self.modifiedAt = Date()
         self.parentFolderID = parentFolderID
@@ -90,8 +92,9 @@ struct Note: Identifiable, Codable {
         pages.first?.thumbnail
     }
 
-    mutating func addPage(template: PageTemplate = .blank) {
-        pages.append(NotePage(template: template))
+    mutating func addPage(template: PageTemplate? = nil) {
+        let pageTemplate = template ?? AppSettings.shared.defaultPageTemplate
+        pages.append(NotePage(template: pageTemplate))
         modifiedAt = Date()
     }
 
