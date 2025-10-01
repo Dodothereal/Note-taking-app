@@ -16,6 +16,19 @@ enum PageTemplate: String, Codable {
     case lined
 }
 
+enum PageSize: Codable, Equatable {
+    case a4
+
+    var size: CGSize {
+        // A4 at 72 DPI: 8.27 × 11.69 inches = 595 × 842 points
+        return CGSize(width: 595, height: 842)
+    }
+
+    var displayName: String {
+        return "A4"
+    }
+}
+
 struct NotePage: Identifiable, Codable {
     let id: UUID
     var drawingData: Data
@@ -61,14 +74,16 @@ struct Note: Identifiable, Codable {
     var createdAt: Date
     var modifiedAt: Date
     var parentFolderID: UUID?
+    var defaultPageSize: PageSize
 
-    init(id: UUID = UUID(), name: String, parentFolderID: UUID? = nil) {
+    init(id: UUID = UUID(), name: String, parentFolderID: UUID? = nil, defaultPageSize: PageSize = .a4) {
         self.id = id
         self.name = name
         self.pages = [NotePage()]
         self.createdAt = Date()
         self.modifiedAt = Date()
         self.parentFolderID = parentFolderID
+        self.defaultPageSize = defaultPageSize
     }
 
     var thumbnailData: Data? {

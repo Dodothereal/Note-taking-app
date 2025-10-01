@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		58F47F5F2E8D754A009359DE /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F47F5E2E8D754A009359DE /* AppSettings.swift */; };
+		58F47F612E8D755C009359DE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F47F602E8D755C009359DE /* SettingsView.swift */; };
 		A1000001000000000000001 /* NoteTakingAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000002000000000000001 /* NoteTakingAppApp.swift */; };
 		A1000003000000000000001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004000000000000001 /* ContentView.swift */; };
 		A1000005000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000006000000000000001 /* Assets.xcassets */; };
@@ -24,6 +26,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		58F47F5E2E8D754A009359DE /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		58F47F602E8D755C009359DE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1000002000000000000001 /* NoteTakingAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTakingAppApp.swift; sourceTree = "<group>"; };
 		A1000004000000000000001 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A1000006000000000000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -37,8 +41,8 @@
 		A1000022000000000000001 /* GridItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GridItemView.swift; sourceTree = "<group>"; };
 		A1000024000000000000001 /* PageThumbnailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageThumbnailsView.swift; sourceTree = "<group>"; };
 		A1000026000000000000001 /* BreadcrumbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbView.swift; sourceTree = "<group>"; };
-		A1000028000000000000002 /* PageTemplateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageTemplateView.swift; sourceTree = "<group>"; };
 		A1000027000000000000001 /* NoteTakingApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NoteTakingApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000028000000000000002 /* PageTemplateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageTemplateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +92,7 @@
 			children = (
 				A1000010000000000000001 /* Note.swift */,
 				A1000012000000000000001 /* Folder.swift */,
+				58F47F5E2E8D754A009359DE /* AppSettings.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -95,6 +100,7 @@
 		A1000033000000000000001 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				58F47F602E8D755C009359DE /* SettingsView.swift */,
 				A1000018000000000000001 /* GridView.swift */,
 				A1000020000000000000001 /* NoteEditorView.swift */,
 				A1000022000000000000001 /* GridItemView.swift */,
@@ -199,12 +205,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				58F47F5F2E8D754A009359DE /* AppSettings.swift in Sources */,
 				A1000003000000000000001 /* ContentView.swift in Sources */,
 				A1000001000000000000001 /* NoteTakingAppApp.swift in Sources */,
 				A1000009000000000000001 /* Note.swift in Sources */,
 				A1000011000000000000001 /* Folder.swift in Sources */,
 				A1000013000000000000001 /* StorageManager.swift in Sources */,
 				A1000015000000000000001 /* NotesViewModel.swift in Sources */,
+				58F47F612E8D755C009359DE /* SettingsView.swift in Sources */,
 				A1000017000000000000001 /* GridView.swift in Sources */,
 				A1000019000000000000001 /* NoteEditorView.swift in Sources */,
 				A1000021000000000000001 /* GridItemView.swift in Sources */,

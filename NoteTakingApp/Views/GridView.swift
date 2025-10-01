@@ -5,6 +5,7 @@ struct GridView: View {
     @State private var showingNewFolderAlert = false
     @State private var showingNewNoteAlert = false
     @State private var showingRenameAlert = false
+    @State private var showingSettings = false
     @State private var newItemName = ""
     @State private var selectedNote: Note?
     @State private var itemToRename: FileSystemItem?
@@ -73,6 +74,12 @@ struct GridView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                         }
+                    } else {
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
                     }
                 }
 
@@ -136,6 +143,9 @@ struct GridView: View {
             }
             .fullScreenCover(item: $selectedNote) { note in
                 NoteEditorView(note: note, viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
             }
         }
     }

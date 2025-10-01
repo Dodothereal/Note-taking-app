@@ -12,6 +12,7 @@ private enum EditorConstants {
 
 struct NoteEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject var settings = AppSettings.shared
     @State private var note: Note
     @State private var currentPageIndex: Int = 0
     @State private var showPageThumbnails = true
@@ -19,7 +20,8 @@ struct NoteEditorView: View {
     @State private var previousPageIndex: Int = 0
     @State private var skipOnChange: Bool = false
     @State private var zoomScale: CGFloat = 1.0
-    @State private var lastZoomScale: CGFloat = 1.0
+    @State private var baseZoomScale: CGFloat = 1.0
+    @State private var autoSaveTimer: Timer?
 
     let viewModel: NotesViewModel
 
@@ -37,65 +39,41 @@ struct NoteEditorView: View {
             GeometryReader { geometry in
                 HStack(spacing: 0) {
                     if isPageValid {
-                        // Current page view
+                        // Current page view with zoomable scroll view
                         ZStack {
-                            // White background
-                            Color.white
+                            // Black background to show page boundaries
+                            Color.black
                                 .ignoresSafeArea()
 
-                            // Template background - with ID to force re-render
-                            PageTemplateView(
-                                template: note.pages[currentPageIndex].template,
-                                size: geometry.size
-                            )
-                            .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)")
-                            .allowsHitTesting(false)
+                            ZoomableScrollView(
+                                zoomScale: $zoomScale,
+                                doubleTapToReset: true,
+                                maxZoomScale: settings.maxZoomLevel
+                            ) {
+                                ZStack {
+                                    // White background
+                                    Color.white
 
-                            // Canvas for drawing (only one instance)
-                            CanvasView(
-                                drawing: $currentDrawing,
-                                onDrawingChanged: { drawing in
-                                    // Update binding immediately to prevent drawing from disappearing
-                                    currentDrawing = drawing
+                                    // Template background - with ID to force re-render
+                                    PageTemplateView(
+                                        template: note.pages[currentPageIndex].template,
+                                        size: note.defaultPageSize.size
+                                    )
+                                    .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)")
+                                    .allowsHitTesting(false)
+
+                                    // Canvas for drawing (only one instance)
+                                    CanvasView(
+                                        drawing: $currentDrawing,
+                                        onDrawingChanged: { drawing in
+                                            // Update binding immediately to prevent drawing from disappearing
+                                            currentDrawing = drawing
+                                        }
+                                    )
                                 }
-                            )
+                                .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
+                            }
                         }
-                        .scaleEffect(zoomScale)
-                        .gesture(
-                            MagnificationGesture()
-                                .onChanged { value in
-                                    let delta = value / lastZoomScale
-                                    lastZoomScale = value
-                                    let newScale = zoomScale * delta
-                                    // Clamp zoom between 0.5x and 3.0x
-                                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.8)) {
-                                        zoomScale = min(max(newScale, 0.5), 3.0)
-                                    }
-                                }
-                                .onEnded { value in
-                                    lastZoomScale = 1.0
-                                }
-                        )
-                        .simultaneousGesture(
-                            TapGesture(count: 2)
-                                .onEnded {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        zoomScale = 1.0
-                                    }
-                                }
-                        )
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 30)
-                                .onEnded { value in
-                                    if value.translation.width < -50 && currentPageIndex < note.pages.count - 1 {
-                                        // Swipe left - next page
-                                        nextPage()
-                                    } else if value.translation.width > 50 && currentPageIndex > 0 {
-                                        // Swipe right - previous page
-                                        previousPage()
-                                    }
-                                }
-                        )
                         .overlay(pageIndicator)
                     } else {
                         // Error state
@@ -170,6 +148,13 @@ struct NoteEditorView: View {
                     currentPageIndex = 0
                 }
                 loadCurrentPage()
+
+                // Start auto-save timer
+                startAutoSave()
+            }
+            .onDisappear {
+                // Stop auto-save timer
+                stopAutoSave()
             }
         }
     }
@@ -417,8 +402,37 @@ struct NoteEditorView: View {
         note.pages[currentPageIndex].modifiedAt = Date()
     }
 
+
+    private func startAutoSave() {
+        print("⏰ Starting auto-save timer (every 5 seconds)")
+        autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+            autoSave()
+        }
+    }
+
+    private func stopAutoSave() {
+        print("⏰ Stopping auto-save timer")
+        autoSaveTimer?.invalidate()
+        autoSaveTimer = nil
+    }
+
+    private func autoSave() {
+        print("💾 Auto-saving note...")
+
+        // Save current drawing
+        updateDrawing(at: currentPageIndex, with: currentDrawing)
+
+        // Save note
+        viewModel.saveNote(note)
+
+        print("✅ Auto-save completed")
+    }
+
     private func saveAndDismiss() {
         print("💾 Saving note and dismissing...")
+
+        // Stop auto-save timer
+        stopAutoSave()
 
         // Save current drawing
         updateDrawing(at: currentPageIndex, with: currentDrawing)
@@ -439,16 +453,21 @@ struct CanvasView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvasView = PKCanvasView()
-        canvasView.drawingPolicy = .anyInput  // Allow finger, mouse, trackpad, and Apple Pencil
+        canvasView.drawingPolicy = .pencilOnly  // Only allow Apple Pencil input
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         canvasView.drawing = drawing
         canvasView.delegate = context.coordinator
 
+        // Fix blurry rendering by setting proper scale for Retina displays
+        canvasView.contentScaleFactor = UIScreen.main.scale
+        canvasView.layer.contentsScale = UIScreen.main.scale
+        canvasView.layer.rasterizationScale = UIScreen.main.scale
+
         // Ensure canvas is transparent and doesn't obscure the template
         canvasView.layer.isOpaque = false
 
-        print("🖌️ Canvas created (transparent, anyInput), setting up tool picker...")
+        print("🖌️ Canvas created (transparent, pencilOnly, scale: \(UIScreen.main.scale)), setting up tool picker...")
 
         // Defer tool picker setup to ensure view hierarchy is ready
         // Use longer delay on first load to ensure window is available
@@ -544,6 +563,176 @@ struct CanvasView: UIViewRepresentable {
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             onDrawingChanged(canvasView.drawing)
+        }
+    }
+}
+
+// MARK: - Zoomable ScrollView
+
+struct ZoomableScrollView<Content: View>: UIViewRepresentable {
+    let content: Content
+    @Binding var zoomScale: CGFloat
+    let doubleTapToReset: Bool
+    let maxZoomScale: Double
+
+    init(
+        zoomScale: Binding<CGFloat>,
+        doubleTapToReset: Bool = true,
+        maxZoomScale: Double = 10.0,
+        @ViewBuilder content: () -> Content
+    ) {
+        self._zoomScale = zoomScale
+        self.doubleTapToReset = doubleTapToReset
+        self.maxZoomScale = maxZoomScale
+        self.content = content()
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 0.5
+        scrollView.maximumZoomScale = CGFloat(maxZoomScale)
+        scrollView.bouncesZoom = true
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+
+        // Create hosting controller for SwiftUI content
+        let hostingController = UIHostingController(rootView: content)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.backgroundColor = .clear
+
+        // Fix blurry rendering by setting proper scale for Retina displays
+        hostingController.view.contentScaleFactor = UIScreen.main.scale
+        hostingController.view.layer.contentsScale = UIScreen.main.scale
+
+        scrollView.addSubview(hostingController.view)
+        context.coordinator.hostingController = hostingController
+        context.coordinator.contentView = hostingController.view
+
+        // Add double tap gesture if enabled
+        if doubleTapToReset {
+            let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
+            doubleTap.numberOfTapsRequired = 2
+            scrollView.addGestureRecognizer(doubleTap)
+        }
+
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        // Update max zoom scale if it changed
+        scrollView.maximumZoomScale = CGFloat(maxZoomScale)
+
+        // Update constraints if needed
+        guard let contentView = context.coordinator.contentView else { return }
+
+        if contentView.constraints.isEmpty {
+            NSLayoutConstraint.activate([
+                contentView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+                contentView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+                contentView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+                contentView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor)
+            ])
+        }
+
+        // Update hosting controller content
+        context.coordinator.hostingController?.rootView = content
+
+        // Trigger centering after content is updated
+        DispatchQueue.main.async {
+            context.coordinator.centerContentIfNeeded(scrollView)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(zoomScale: $zoomScale)
+    }
+
+    class Coordinator: NSObject, UIScrollViewDelegate {
+        var hostingController: UIHostingController<Content>?
+        var contentView: UIView?
+        @Binding var zoomScale: CGFloat
+
+        init(zoomScale: Binding<CGFloat>) {
+            self._zoomScale = zoomScale
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            return contentView
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            zoomScale = scrollView.zoomScale
+            centerContentIfNeeded(scrollView)
+
+            // Update content scale factor dynamically during zoom to prevent blurriness
+            if let contentView = contentView {
+                let scale = UIScreen.main.scale * scrollView.zoomScale
+                contentView.contentScaleFactor = scale
+                contentView.layer.contentsScale = scale
+
+                // Update PKCanvasView scale if it exists in the hierarchy
+                updateCanvasScale(in: contentView, scale: scale)
+            }
+        }
+
+        private func updateCanvasScale(in view: UIView, scale: CGFloat) {
+            // Recursively find and update PKCanvasView
+            for subview in view.subviews {
+                if let canvasView = subview as? PKCanvasView {
+                    canvasView.contentScaleFactor = scale
+                    canvasView.layer.contentsScale = scale
+                    canvasView.layer.rasterizationScale = scale
+                } else {
+                    updateCanvasScale(in: subview, scale: scale)
+                }
+            }
+        }
+
+        func scrollViewDidLayoutSubviews(_ scrollView: UIScrollView) {
+            centerContentIfNeeded(scrollView)
+        }
+
+        func centerContentIfNeeded(_ scrollView: UIScrollView) {
+            guard let contentView = contentView else { return }
+
+            let contentWidth = contentView.frame.width * scrollView.zoomScale
+            let contentHeight = contentView.frame.height * scrollView.zoomScale
+
+            let scrollViewWidth = scrollView.bounds.width
+            let scrollViewHeight = scrollView.bounds.height
+
+            let horizontalInset = max(0, (scrollViewWidth - contentWidth) / 2)
+            let verticalInset = max(0, (scrollViewHeight - contentHeight) / 2)
+
+            scrollView.contentInset = UIEdgeInsets(
+                top: verticalInset,
+                left: horizontalInset,
+                bottom: verticalInset,
+                right: horizontalInset
+            )
+        }
+
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView = gesture.view as? UIScrollView else { return }
+
+            if scrollView.zoomScale > 1.0 {
+                // Reset to 1.0
+                scrollView.setZoomScale(1.0, animated: true)
+            } else {
+                // Zoom to 2.0 at tap location
+                let location = gesture.location(in: contentView)
+                let size = CGSize(
+                    width: scrollView.bounds.width / 2.0,
+                    height: scrollView.bounds.height / 2.0
+                )
+                let origin = CGPoint(
+                    x: location.x - size.width / 2,
+                    y: location.y - size.height / 2
+                )
+                scrollView.zoom(to: CGRect(origin: origin, size: size), animated: true)
+            }
         }
     }
 }
