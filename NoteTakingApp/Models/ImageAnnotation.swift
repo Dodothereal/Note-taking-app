@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-struct ImageAnnotation: Identifiable, Codable {
+struct ImageAnnotation: Identifiable, Codable, Equatable {
     let id: UUID
     var imageData: Data
     var position: CGPoint

@@ -6,7 +6,7 @@ struct PageThumbnailsView: View {
     @Binding var currentPageIndex: Int
     let onAddPage: () -> Void
     let onDeletePage: (Int) -> Void
-    @ObservedObject var settings = AppSettings.shared
+    @EnvironmentObject var settings: AppSettings
 
     var body: some View {
         VStack(spacing: 0) {

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 class TrashManager {
     static let shared = TrashManager()
@@ -9,14 +10,19 @@ class TrashManager {
     // In-memory cache for performance
     private var trashCache: [UUID: DeletedItem] = [:]
     private let cacheQueue = DispatchQueue(label: "com.notetakingapp.trash", attributes: .concurrent)
+    private var cleanupTimer: Timer?
 
     private init() {
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         trashDirectory = documentsPath.appendingPathComponent("Trash", isDirectory: true)
 
         createDirectoryIfNeeded()
-        preloadCache()
+        // Lazy loading - cache will be populated on demand when items are accessed
         scheduleAutomaticCleanup()
+
+        // Add lifecycle observers to stop/start cleanup timer
+        NotificationCenter.default.addObserver(self, selector: #selector(stopCleanupTimer), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(startCleanupTimer), name: UIApplication.didBecomeActiveNotification, object: nil)
     }
 
     private func createDirectoryIfNeeded() {
@@ -115,6 +121,32 @@ class TrashManager {
     }
 
     func loadAll() -> [DeletedItem] {
+        // Check if cache is empty - if so, load from disk
+        var cacheIsEmpty = false
+        cacheQueue.sync {
+            cacheIsEmpty = trashCache.isEmpty
+        }
+
+        if cacheIsEmpty {
+            // Lazy load trash items from disk
+            do {
+                let urls = try fileManager.contentsOfDirectory(at: trashDirectory, includingPropertiesForKeys: nil)
+                for url in urls where url.pathExtension == "trash" {
+                    do {
+                        let data = try Data(contentsOf: url)
+                        let item = try JSONDecoder().decode(DeletedItem.self, from: data)
+                        cacheQueue.async(flags: .barrier) {
+                            self.trashCache[item.id] = item
+                        }
+                    } catch {
+                        print("⚠️ Corrupted trash file: \(url.lastPathComponent)")
+                    }
+                }
+            } catch {
+                print("❌ Error loading trash items: \(error.localizedDescription)")
+            }
+        }
+
         var items: [DeletedItem] = []
         cacheQueue.sync {
             items = Array(trashCache.values).sorted { $0.deletedAt > $1.deletedAt }
@@ -148,15 +180,27 @@ class TrashManager {
     }
 
     private func scheduleAutomaticCleanup() {
-        // Run cleanup daily
-        Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
-            self?.cleanupExpiredItems()
-        }
+        startCleanupTimer()
 
         // Run cleanup on init
         DispatchQueue.global(qos: .background).async {
             self.cleanupExpiredItems()
         }
+    }
+
+    @objc private func startCleanupTimer() {
+        // Avoid multiple timers
+        stopCleanupTimer()
+
+        // Run cleanup daily
+        cleanupTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            self?.cleanupExpiredItems()
+        }
+    }
+
+    @objc private func stopCleanupTimer() {
+        cleanupTimer?.invalidate()
+        cleanupTimer = nil
     }
 
     // MARK: - Statistics

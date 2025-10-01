@@ -31,7 +31,7 @@ enum PageSize: Codable, Equatable {
     }
 }
 
-struct NotePage: Identifiable, Codable {
+struct NotePage: Identifiable, Codable, Equatable {
     let id: UUID
     var drawingData: Data
     var thumbnail: Data?
@@ -77,7 +77,7 @@ struct NotePage: Identifiable, Codable {
     }
 }
 
-struct Note: Identifiable, Codable {
+struct Note: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var pages: [NotePage]
@@ -119,10 +119,8 @@ struct Note: Identifiable, Codable {
         pages[index].drawing = drawing
         modifiedAt = Date()
 
-        // Update thumbnail for first page
-        if index == 0 {
-            generateThumbnail(for: index)
-        }
+        // Thumbnail generation is handled by the caller with debouncing
+        // to avoid unnecessary regenerations during drawing
     }
 
     mutating func generateThumbnail(for pageIndex: Int, completion: ((Data?) -> Void)? = nil) {

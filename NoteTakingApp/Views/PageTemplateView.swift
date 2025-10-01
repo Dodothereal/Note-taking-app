@@ -5,7 +5,7 @@ struct PageTemplateView: UIViewRepresentable {
     let template: PageTemplate
     let size: CGSize
     let nightMode: Bool
-    @ObservedObject var settings = AppSettings.shared
+    @EnvironmentObject var settings: AppSettings
 
     func makeUIView(context: Context) -> TemplateUIView {
         let view = TemplateUIView()
@@ -15,6 +15,14 @@ struct PageTemplateView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: TemplateUIView, context: Context) {
+        // Only update and redraw if properties have changed
+        let needsRedraw = uiView.template != template ||
+                         uiView.size != size ||
+                         uiView.gridSpacing != settings.gridSpacing ||
+                         uiView.linedSpacing != settings.linedSpacing ||
+                         uiView.resolutionScale != settings.resolutionScale ||
+                         uiView.nightMode != nightMode
+
         uiView.template = template
         uiView.size = size
         uiView.gridSpacing = settings.gridSpacing
@@ -22,7 +30,10 @@ struct PageTemplateView: UIViewRepresentable {
         uiView.resolutionScale = settings.resolutionScale
         uiView.nightMode = nightMode
         uiView.backgroundColor = nightMode ? .black : .white
-        uiView.setNeedsDisplay()
+
+        if needsRedraw {
+            uiView.setNeedsDisplay()
+        }
     }
 }
 

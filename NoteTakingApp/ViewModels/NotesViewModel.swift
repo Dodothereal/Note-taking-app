@@ -54,7 +54,9 @@ class NotesViewModel: ObservableObject {
         let folder = Folder(name: name, parentFolderID: currentFolderID)
         do {
             try storage.saveFolder(folder)
-            loadItems()
+            // Incremental update: add new folder to items and re-sort
+            items.insert(.folder(folder), at: 0) // Insert at beginning since it's most recent
+            items.sort { $0.modifiedAt > $1.modifiedAt }
         } catch {
             showErrorMessage("Failed to create folder: \(error.localizedDescription)")
         }
@@ -66,7 +68,9 @@ class NotesViewModel: ObservableObject {
         do {
             try storage.saveNote(note)
             print("✅ Note created and saved: \(note.id)")
-            loadItems()
+            // Incremental update: add new note to items and re-sort
+            items.insert(.note(note), at: 0) // Insert at beginning since it's most recent
+            items.sort { $0.modifiedAt > $1.modifiedAt }
             return note
         } catch {
             print("❌ Failed to create note: \(error)")
@@ -85,7 +89,8 @@ class NotesViewModel: ObservableObject {
             case .note(let note):
                 try storage.deleteNote(id: note.id)
             }
-            loadItems()
+            // Incremental update: remove item from array
+            items.removeAll { $0.id == item.id }
         } catch {
             showErrorMessage("Failed to delete item: \(error.localizedDescription)")
         }
@@ -98,10 +103,27 @@ class NotesViewModel: ObservableObject {
             switch item {
             case .folder(let folder):
                 try storage.renameFolder(id: folder.id, to: newName)
+                // Incremental update: update folder in array
+                if let index = items.firstIndex(where: { $0.id == folder.id }) {
+                    if case .folder(var updatedFolder) = items[index] {
+                        updatedFolder.name = newName
+                        updatedFolder.modifiedAt = Date()
+                        items[index] = .folder(updatedFolder)
+                    }
+                }
             case .note(let note):
                 try storage.renameNote(id: note.id, to: newName)
+                // Incremental update: update note in array
+                if let index = items.firstIndex(where: { $0.id == note.id }) {
+                    if case .note(var updatedNote) = items[index] {
+                        updatedNote.name = newName
+                        updatedNote.modifiedAt = Date()
+                        items[index] = .note(updatedNote)
+                    }
+                }
             }
-            loadItems()
+            // Re-sort since modifiedAt changed
+            items.sort { $0.modifiedAt > $1.modifiedAt }
         } catch {
             showErrorMessage("Failed to rename item: \(error.localizedDescription)")
         }
@@ -117,7 +139,10 @@ class NotesViewModel: ObservableObject {
             case .note(let note):
                 try storage.moveNote(id: note.id, to: targetFolderID)
             }
-            loadItems()
+            // Incremental update: remove item if moved to different folder
+            if targetFolderID != currentFolderID {
+                items.removeAll { $0.id == item.id }
+            }
         } catch {
             showErrorMessage("Failed to move item: \(error.localizedDescription)")
         }
@@ -131,7 +156,12 @@ class NotesViewModel: ObservableObject {
         do {
             try storage.saveNote(note)
             print("✅ Note saved successfully")
-            loadItems()
+            // Incremental update: update note in array if it exists
+            if let index = items.firstIndex(where: { $0.id == note.id }) {
+                items[index] = .note(note)
+                // Re-sort since modifiedAt may have changed
+                items.sort { $0.modifiedAt > $1.modifiedAt }
+            }
         } catch {
             print("❌ Failed to save note: \(error)")
             showErrorMessage("Failed to save note: \(error.localizedDescription)")

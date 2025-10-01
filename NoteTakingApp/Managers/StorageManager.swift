@@ -19,7 +19,7 @@ class StorageManager {
         foldersDirectory = documentsPath.appendingPathComponent("Folders", isDirectory: true)
 
         createDirectoriesIfNeeded()
-        preloadCache()
+        // Lazy loading - cache will be populated on demand when items are accessed
     }
 
     private func createDirectoriesIfNeeded() {
@@ -158,6 +158,29 @@ class StorageManager {
     }
 
     func loadAllNotes() throws -> [Note] {
+        // Check if cache is empty - if so, load from disk
+        var cacheIsEmpty = false
+        cacheQueue.sync {
+            cacheIsEmpty = notesCache.isEmpty
+        }
+
+        if cacheIsEmpty {
+            // Lazy load notes from disk
+            let noteURLs = try fileManager.contentsOfDirectory(at: notesDirectory, includingPropertiesForKeys: nil)
+            for url in noteURLs where url.pathExtension == "note" {
+                do {
+                    let data = try Data(contentsOf: url)
+                    let note = try JSONDecoder().decode(Note.self, from: data)
+                    cacheQueue.async(flags: .barrier) {
+                        self.notesCache[note.id] = note
+                    }
+                } catch {
+                    print("⚠️ Corrupted note file: \(url.lastPathComponent) - \(error.localizedDescription)")
+                    quarantineCorruptedFile(url)
+                }
+            }
+        }
+
         var notes: [Note] = []
         cacheQueue.sync {
             notes = Array(notesCache.values)
@@ -166,6 +189,9 @@ class StorageManager {
     }
 
     func loadNotes(in folderID: UUID?) throws -> [Note] {
+        // Ensure notes are loaded (lazy load if needed)
+        _ = try loadAllNotes()
+
         var notes: [Note] = []
         cacheQueue.sync {
             notes = notesCache.values.filter { $0.parentFolderID == folderID }
@@ -264,6 +290,29 @@ class StorageManager {
     }
 
     func loadAllFolders() throws -> [Folder] {
+        // Check if cache is empty - if so, load from disk
+        var cacheIsEmpty = false
+        cacheQueue.sync {
+            cacheIsEmpty = foldersCache.isEmpty
+        }
+
+        if cacheIsEmpty {
+            // Lazy load folders from disk
+            let folderURLs = try fileManager.contentsOfDirectory(at: foldersDirectory, includingPropertiesForKeys: nil)
+            for url in folderURLs where url.pathExtension == "folder" {
+                do {
+                    let data = try Data(contentsOf: url)
+                    let folder = try JSONDecoder().decode(Folder.self, from: data)
+                    cacheQueue.async(flags: .barrier) {
+                        self.foldersCache[folder.id] = folder
+                    }
+                } catch {
+                    print("⚠️ Corrupted folder file: \(url.lastPathComponent) - \(error.localizedDescription)")
+                    quarantineCorruptedFile(url)
+                }
+            }
+        }
+
         var folders: [Folder] = []
         cacheQueue.sync {
             folders = Array(foldersCache.values)
@@ -272,6 +321,9 @@ class StorageManager {
     }
 
     func loadFolders(in parentFolderID: UUID?) throws -> [Folder] {
+        // Ensure folders are loaded (lazy load if needed)
+        _ = try loadAllFolders()
+
         var folders: [Folder] = []
         cacheQueue.sync {
             folders = foldersCache.values.filter { $0.parentFolderID == parentFolderID }

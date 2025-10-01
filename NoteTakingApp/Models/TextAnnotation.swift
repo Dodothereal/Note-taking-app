@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-struct TextAnnotation: Identifiable, Codable {
+struct TextAnnotation: Identifiable, Codable, Equatable {
     let id: UUID
     var text: String
     var position: CGPoint
@@ -26,7 +26,7 @@ struct TextAnnotation: Identifiable, Codable {
 }
 
 // Helper struct to encode/decode UIColor
-struct CodableColor: Codable {
+struct CodableColor: Codable, Equatable {
     var red: CGFloat
     var green: CGFloat
     var blue: CGFloat

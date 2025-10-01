@@ -8,7 +8,7 @@ struct GridItemView: View {
 
     @State private var isPressed = false
     @State private var showingDeleteConfirmation = false
-    @ObservedObject var settings = AppSettings.shared
+    @EnvironmentObject var settings: AppSettings
 
     var body: some View {
         VStack(spacing: 12) {

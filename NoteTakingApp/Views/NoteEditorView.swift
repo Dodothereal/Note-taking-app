@@ -25,7 +25,7 @@ private enum EditorConstants {
 struct NoteEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
-    @ObservedObject var settings = AppSettings.shared
+    @EnvironmentObject var settings: AppSettings
     @State private var note: Note
     @State private var currentPageIndex: Int = 0
     @State private var showPageThumbnails = false
@@ -38,6 +38,7 @@ struct NoteEditorView: View {
     @State private var autoSaveTimer: Timer?
     @State private var showingShareSheet = false
     @State private var pdfURLToShare: URL?
+    @State private var isDirty = false
 
     let viewModel: NotesViewModel
 
@@ -56,138 +57,143 @@ struct NoteEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                HStack(spacing: 0) {
-                    if isPageValid {
-                        // Current page view with zoomable scroll view
-                        ZStack {
-                            // Background to show page boundaries - follows system appearance
-                            (colorScheme == .dark ? Color.black : Color(white: 0.95))
-                                .ignoresSafeArea()
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                if isPageValid {
+                    // Current page view with zoomable scroll view
+                    ZStack {
+                        // Background to show page boundaries - follows system appearance
+                        (colorScheme == .dark ? Color.black : Color(white: 0.95))
+                            .ignoresSafeArea()
 
-                            ZoomableScrollView(
-                                zoomScale: $zoomScale,
-                                doubleTapToReset: true,
-                                maxZoomScale: settings.maxZoomLevel
-                            ) {
-                                ZStack {
-                                    // Background color (white or black based on night mode)
-                                    (settings.nightModeEnabled ? Color.black : Color.white)
+                        ZoomableScrollView(
+                            zoomScale: $zoomScale,
+                            doubleTapToReset: true,
+                            maxZoomScale: settings.maxZoomLevel
+                        ) {
+                            ZStack {
+                                // Background color (white or black based on night mode)
+                                (settings.nightModeEnabled ? Color.black : Color.white)
 
-                                    // Template background - with ID to force re-render
-                                    PageTemplateView(
-                                        template: note.pages[currentPageIndex].template,
-                                        size: note.defaultPageSize.size,
-                                        nightMode: settings.nightModeEnabled
+                                // Template background - with ID to force re-render
+                                PageTemplateView(
+                                    template: note.pages[currentPageIndex].template,
+                                    size: note.defaultPageSize.size,
+                                    nightMode: settings.nightModeEnabled
+                                )
+                                .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)-\(settings.nightModeEnabled)")
+                                .allowsHitTesting(false)
+
+                                // Canvas for drawing (only one instance)
+                                Group {
+                                    CanvasView(
+                                        drawing: $currentDrawing,
+                                        onDrawingChanged: { drawing in
+                                            // Update binding immediately to prevent drawing from disappearing
+                                            currentDrawing = drawing
+                                            isDirty = true
+                                        }
                                     )
-                                    .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)-\(settings.nightModeEnabled)")
-                                    .allowsHitTesting(false)
-
-                                    // Canvas for drawing (only one instance)
-                                    Group {
-                                        CanvasView(
-                                            drawing: $currentDrawing,
-                                            onDrawingChanged: { drawing in
-                                                // Update binding immediately to prevent drawing from disappearing
-                                                currentDrawing = drawing
-                                            }
-                                        )
-                                    }
-                                    .conditionalColorInvert(shouldInvertDrawing)
                                 }
-                                .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
+                                .conditionalColorInvert(shouldInvertDrawing)
                             }
-                        }
-                        .overlay(pageIndicator)
-                    } else {
-                        // Error state
-                        VStack {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.system(size: 50))
-                                .foregroundColor(.red)
-                            Text("Error loading page")
-                                .font(.headline)
-                                .padding()
+                            .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
                         }
                     }
-
-                    // Page thumbnails sidebar
-                    if showPageThumbnails {
-                        PageThumbnailsView(
-                            pages: $note.pages,
-                            currentPageIndex: $currentPageIndex,
-                            onAddPage: {
-                                addPage()
-                            },
-                            onDeletePage: { index in
-                                deletePage(at: index)
-                            }
-                        )
+                    .overlay(pageIndicator)
+                    .overlay {
+                        if #available(iOS 26.0, *) {
+                            floatingButtons
+                        }
+                    }
+                } else {
+                    // Error state
+                    VStack {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 50))
+                            .foregroundColor(.red)
+                        Text("Error loading page")
+                            .font(.headline)
+                            .padding()
                     }
                 }
-            }
-            .navigationTitle(note.name)
-            .onChange(of: currentPageIndex) { oldIndex, newIndex in
-                // Skip if flagged (e.g., during addPage/deletePage which handle their own loading)
-                if skipOnChange {
-                    skipOnChange = false
-                    return
-                }
 
-                // Save drawing when page changes (via swipe, thumbnail tap, etc.)
-                if oldIndex >= 0 && oldIndex < note.pages.count && oldIndex != newIndex {
-                    print("📄 Page changed from \(oldIndex) to \(newIndex), saving and loading")
-
-                    // Save the current drawing to the OLD page (before we load the new page)
-                    updateDrawing(at: oldIndex, with: currentDrawing)
-
-                    // Now load the new page
-                    loadCurrentPage()
+                // Page thumbnails sidebar
+                if showPageThumbnails {
+                    PageThumbnailsView(
+                        pages: $note.pages,
+                        currentPageIndex: $currentPageIndex,
+                        onAddPage: {
+                            addPage()
+                        },
+                        onDeletePage: { index in
+                            deletePage(at: index)
+                        }
+                    )
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    doneButton
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    toolbarControls
-                }
+        }
+        .ignoresSafeArea()
+        .onChange(of: currentPageIndex) { oldIndex, newIndex in
+            // Skip if flagged (e.g., during addPage/deletePage which handle their own loading)
+            if skipOnChange {
+                skipOnChange = false
+                return
             }
-            .onAppear {
-                print("🚀 NoteEditorView appeared")
-                print("📊 Note: \(note.name)")
-                print("📊 Total pages: \(note.pages.count)")
-                print("📊 Current page index: \(currentPageIndex)")
 
-                // Ensure valid page index
-                if currentPageIndex >= note.pages.count {
-                    print("⚠️ Page index out of bounds, adjusting: \(currentPageIndex) -> \(max(0, note.pages.count - 1))")
-                    currentPageIndex = max(0, note.pages.count - 1)
-                }
-                if currentPageIndex < 0 {
-                    print("⚠️ Page index negative, adjusting to 0")
-                    currentPageIndex = 0
-                }
+            // Save drawing when page changes (via swipe, thumbnail tap, etc.)
+            if oldIndex >= 0 && oldIndex < note.pages.count && oldIndex != newIndex {
+                print("📄 Page changed from \(oldIndex) to \(newIndex), saving and loading")
+
+                // Save the current drawing to the OLD page (before we load the new page)
+                updateDrawing(at: oldIndex, with: currentDrawing)
+
+                // Now load the new page
                 loadCurrentPage()
-
-                // Start auto-save timer
-                startAutoSave()
             }
-            .onDisappear {
-                // Stop auto-save timer
+        }
+        .onAppear {
+            print("🚀 NoteEditorView appeared")
+            print("📊 Note: \(note.name)")
+            print("📊 Total pages: \(note.pages.count)")
+            print("📊 Current page index: \(currentPageIndex)")
+
+            // Ensure valid page index
+            if currentPageIndex >= note.pages.count {
+                print("⚠️ Page index out of bounds, adjusting: \(currentPageIndex) -> \(max(0, note.pages.count - 1))")
+                currentPageIndex = max(0, note.pages.count - 1)
+            }
+            if currentPageIndex < 0 {
+                print("⚠️ Page index negative, adjusting to 0")
+                currentPageIndex = 0
+            }
+            loadCurrentPage()
+
+            // Start auto-save timer
+            startAutoSave()
+
+            // Add lifecycle observers for background/foreground
+            NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
                 stopAutoSave()
             }
-            .sheet(isPresented: $showNoteSettings) {
-                NoteSettingsView(note: $note, currentPageIndex: currentPageIndex)
+            NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+                startAutoSave()
             }
-            .sheet(isPresented: $showingShareSheet) {
-                if let url = pdfURLToShare {
-                    ShareSheet(items: [url])
-                }
+        }
+        .onDisappear {
+            // Stop auto-save timer
+            stopAutoSave()
+
+            // Remove lifecycle observers
+            NotificationCenter.default.removeObserver(self, name: UIApplication.willResignActiveNotification, object: nil)
+            NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        }
+        .sheet(isPresented: $showNoteSettings) {
+            NoteSettingsView(note: $note, currentPageIndex: currentPageIndex)
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            if let url = pdfURLToShare {
+                ShareSheet(items: [url])
             }
         }
     }
@@ -221,55 +227,73 @@ struct NoteEditorView: View {
         }
     }
 
-    private var doneButton: some View {
-        Button {
-            saveAndDismiss()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark")
-                    .font(.subheadline.weight(.semibold))
-                Text("Done")
-                    .font(.body.weight(.medium))
-            }
-            .foregroundStyle(.blue)
-        }
-    }
+    @available(iOS 26.0, *)
+    private var floatingButtons: some View {
+        GlassEffectContainer {
+            VStack {
+                HStack {
+                    // Done button - top left
+                    Button {
+                        saveAndDismiss()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Done")
+                                .font(.body.weight(.medium))
+                        }
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
+                    .glassEffect(.regular.interactive())
+                    .padding(.leading, 16)
+                    .padding(.top, 30)
 
-    private var toolbarControls: some View {
-        HStack(spacing: 12) {
-            // Export PDF button
-            Button {
-                exportPDF()
-            } label: {
-                Image(systemName: "arrow.up.doc")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.blue)
-            }
+                    Spacer()
 
-            Divider()
-                .frame(height: 20)
+                    // Control buttons - top right
+                    HStack(spacing: 12) {
+                        // Export PDF button
+                        Button {
+                            exportPDF()
+                        } label: {
+                            Image(systemName: "arrow.up.doc")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 44, height: 44)
+                        }
+                        .glassEffect(.regular.interactive())
 
-            // Note settings button
-            Button {
-                showNoteSettings = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.blue)
-            }
+                        // Note settings button
+                        Button {
+                            showNoteSettings = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 44, height: 44)
+                        }
+                        .glassEffect(.regular.interactive())
 
-            Divider()
-                .frame(height: 20)
-
-            // Sidebar toggle
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showPageThumbnails.toggle()
+                        // Sidebar toggle
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showPageThumbnails.toggle()
+                            }
+                        } label: {
+                            Image(systemName: showPageThumbnails ? "sidebar.right" : "sidebar.left")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                                .frame(width: 44, height: 44)
+                        }
+                        .glassEffect(.regular.interactive())
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.top, 30)
                 }
-            } label: {
-                Image(systemName: showPageThumbnails ? "sidebar.right" : "sidebar.left")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.blue)
+
+                Spacer()
             }
         }
     }
@@ -283,13 +307,16 @@ struct NoteEditorView: View {
         print("✏️ Updating drawing for page \(index)")
         note.updatePage(at: index, with: drawing)
 
-        // Debounce thumbnail generation
-        DispatchQueue.main.asyncAfter(deadline: .now() + EditorConstants.thumbnailDebounceDelay) {
-            guard index < note.pages.count else { return }
-            print("📸 Generating thumbnail for page \(index)")
-            note.generateThumbnail(for: index) { thumbnailData in
-                if let data = thumbnailData, index < note.pages.count {
-                    note.pages[index].thumbnail = data
+        // Only generate thumbnails for the first page (shown in grid view)
+        if index == 0 {
+            // Debounce thumbnail generation
+            DispatchQueue.main.asyncAfter(deadline: .now() + EditorConstants.thumbnailDebounceDelay) {
+                guard index < note.pages.count else { return }
+                print("📸 Generating thumbnail for page \(index)")
+                note.generateThumbnail(for: index) { thumbnailData in
+                    if let data = thumbnailData, index < note.pages.count {
+                        note.pages[index].thumbnail = data
+                    }
                 }
             }
         }
@@ -352,6 +379,9 @@ struct NoteEditorView: View {
         // Uses default template from settings
         note.addPage()
 
+        // Mark as dirty
+        isDirty = true
+
         // Skip onChange since we're handling the page load ourselves
         skipOnChange = true
         currentPageIndex = note.pages.count - 1
@@ -380,6 +410,9 @@ struct NoteEditorView: View {
         // Mutate note and update index synchronously to prevent state loss
         note.deletePage(at: index)
 
+        // Mark as dirty
+        isDirty = true
+
         // Skip onChange since we're handling the page load ourselves
         skipOnChange = true
         if currentPageIndex >= note.pages.count {
@@ -396,8 +429,8 @@ struct NoteEditorView: View {
     }
 
     private func startAutoSave() {
-        print("⏰ Starting auto-save timer (every 5 seconds)")
-        autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+        print("⏰ Starting auto-save timer (every 10 seconds)")
+        autoSaveTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { _ in
             autoSave()
         }
     }
@@ -409,6 +442,11 @@ struct NoteEditorView: View {
     }
 
     private func autoSave() {
+        // Only save if there are changes
+        guard isDirty else {
+            return
+        }
+
         print("💾 Auto-saving note...")
 
         // Save current drawing
@@ -416,6 +454,9 @@ struct NoteEditorView: View {
 
         // Save note
         viewModel.saveNote(note)
+
+        // Reset dirty flag
+        isDirty = false
 
         print("✅ Auto-save completed")
     }
@@ -431,6 +472,9 @@ struct NoteEditorView: View {
 
         // Save note
         viewModel.saveNote(note)
+
+        // Reset dirty flag
+        isDirty = false
 
         print("✅ Note saved successfully")
         dismiss()
@@ -661,6 +705,7 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         var hostingController: UIHostingController<Content>?
         var contentView: UIView?
         @Binding var zoomScale: CGFloat
+        private weak var cachedCanvasView: PKCanvasView?
 
         init(zoomScale: Binding<CGFloat>) {
             self._zoomScale = zoomScale
@@ -686,14 +731,28 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         }
 
         private func updateCanvasScale(in view: UIView, scale: CGFloat) {
-            // Recursively find and update PKCanvasView
+            // Use cached canvas view if available
+            if let canvasView = cachedCanvasView {
+                canvasView.contentScaleFactor = scale
+                canvasView.layer.contentsScale = scale
+                canvasView.layer.rasterizationScale = scale
+                return
+            }
+
+            // First time: find and cache PKCanvasView
+            findAndCacheCanvasView(in: view, scale: scale)
+        }
+
+        private func findAndCacheCanvasView(in view: UIView, scale: CGFloat) {
             for subview in view.subviews {
                 if let canvasView = subview as? PKCanvasView {
+                    cachedCanvasView = canvasView
                     canvasView.contentScaleFactor = scale
                     canvasView.layer.contentsScale = scale
                     canvasView.layer.rasterizationScale = scale
+                    return
                 } else {
-                    updateCanvasScale(in: subview, scale: scale)
+                    findAndCacheCanvasView(in: subview, scale: scale)
                 }
             }
         }

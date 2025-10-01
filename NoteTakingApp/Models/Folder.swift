@@ -1,6 +1,6 @@
 import Foundation
 
-struct Folder: Identifiable, Codable {
+struct Folder: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var createdAt: Date
@@ -16,7 +16,7 @@ struct Folder: Identifiable, Codable {
     }
 }
 
-enum FileSystemItem: Identifiable {
+enum FileSystemItem: Identifiable, Equatable {
     case folder(Folder)
     case note(Note)
 

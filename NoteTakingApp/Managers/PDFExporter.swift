@@ -4,6 +4,9 @@ import PencilKit
 import UIKit
 
 class PDFExporter {
+    // Reusable CIContext for better performance
+    private static let ciContext = CIContext()
+
     static func exportNote(_ note: Note, nightMode: Bool = false) -> URL? {
         let pdfDocument = PDFDocument()
         let settings = AppSettings.shared
@@ -270,8 +273,8 @@ class PDFExporter {
 
         guard let outputImage = filter.outputImage else { return nil }
 
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(outputImage, from: outputImage.extent) else { return nil }
+        // Use shared context for better performance
+        guard let cgImage = ciContext.createCGImage(outputImage, from: outputImage.extent) else { return nil }
 
         return UIImage(cgImage: cgImage)
     }

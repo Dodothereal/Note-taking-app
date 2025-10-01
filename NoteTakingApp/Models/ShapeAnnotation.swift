@@ -9,7 +9,7 @@ enum ShapeType: String, Codable {
     case triangle
 }
 
-struct ShapeAnnotation: Identifiable, Codable {
+struct ShapeAnnotation: Identifiable, Codable, Equatable {
     let id: UUID
     var type: ShapeType
     var startPoint: CGPoint
