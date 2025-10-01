@@ -130,13 +130,30 @@ class StorageManager {
         }
     }
 
-    func deleteNote(id: UUID) throws {
-        let noteURL = notesDirectory.appendingPathComponent("\(id.uuidString).note")
-        try fileManager.removeItem(at: noteURL)
+    func deleteNote(id: UUID, permanent: Bool = false) throws {
+        let note = try loadNote(id: id)
 
-        // Remove from cache
-        cacheQueue.async(flags: .barrier) {
-            self.notesCache.removeValue(forKey: id)
+        if permanent {
+            // Permanent delete
+            let noteURL = notesDirectory.appendingPathComponent("\(id.uuidString).note")
+            try fileManager.removeItem(at: noteURL)
+
+            // Remove from cache
+            cacheQueue.async(flags: .barrier) {
+                self.notesCache.removeValue(forKey: id)
+            }
+        } else {
+            // Move to trash
+            try TrashManager.shared.moveToTrash(note: note)
+
+            // Remove from active storage
+            let noteURL = notesDirectory.appendingPathComponent("\(id.uuidString).note")
+            try fileManager.removeItem(at: noteURL)
+
+            // Remove from cache
+            cacheQueue.async(flags: .barrier) {
+                self.notesCache.removeValue(forKey: id)
+            }
         }
     }
 
@@ -207,26 +224,42 @@ class StorageManager {
         }
     }
 
-    func deleteFolder(id: UUID) throws {
+    func deleteFolder(id: UUID, permanent: Bool = false) throws {
+        let folder = try loadFolder(id: id)
+
         // Delete all notes in this folder
         let notes = try loadNotes(in: id)
         for note in notes {
-            try deleteNote(id: note.id)
+            try deleteNote(id: note.id, permanent: permanent)
         }
 
         // Delete all subfolders
         let subfolders = try loadFolders(in: id)
         for subfolder in subfolders {
-            try deleteFolder(id: subfolder.id)
+            try deleteFolder(id: subfolder.id, permanent: permanent)
         }
 
-        // Delete the folder itself
-        let folderURL = foldersDirectory.appendingPathComponent("\(id.uuidString).folder")
-        try fileManager.removeItem(at: folderURL)
+        if permanent {
+            // Permanent delete
+            let folderURL = foldersDirectory.appendingPathComponent("\(id.uuidString).folder")
+            try fileManager.removeItem(at: folderURL)
 
-        // Remove from cache
-        cacheQueue.async(flags: .barrier) {
-            self.foldersCache.removeValue(forKey: id)
+            // Remove from cache
+            cacheQueue.async(flags: .barrier) {
+                self.foldersCache.removeValue(forKey: id)
+            }
+        } else {
+            // Move to trash
+            try TrashManager.shared.moveToTrash(folder: folder)
+
+            // Remove from active storage
+            let folderURL = foldersDirectory.appendingPathComponent("\(id.uuidString).folder")
+            try fileManager.removeItem(at: folderURL)
+
+            // Remove from cache
+            cacheQueue.async(flags: .barrier) {
+                self.foldersCache.removeValue(forKey: id)
+            }
         }
     }
 

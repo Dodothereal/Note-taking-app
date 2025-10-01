@@ -6,6 +6,7 @@ struct PageThumbnailsView: View {
     @Binding var currentPageIndex: Int
     let onAddPage: () -> Void
     let onDeletePage: (Int) -> Void
+    @ObservedObject var settings = AppSettings.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -101,11 +102,12 @@ struct PageThumbnailsView: View {
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 110, height: 150)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .conditionalColorInvert(settings.nightModeEnabled && settings.nightModeInvertDrawings)
                     } else {
                         RoundedRectangle(cornerRadius: 12)
                             .fill(
                                 LinearGradient(
-                                    colors: [.white, Color(.systemGray6)],
+                                    colors: settings.nightModeEnabled ? [Color.black, Color(.systemGray5)] : [.white, Color(.systemGray6)],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )

@@ -7,16 +7,21 @@ struct GridItemView: View {
     let onDelete: () -> Void
 
     @State private var isPressed = false
+    @State private var showingDeleteConfirmation = false
+    @ObservedObject var settings = AppSettings.shared
 
     var body: some View {
         VStack(spacing: 12) {
             // Thumbnail or folder icon with glass effect
             ZStack {
-                // Background with subtle gradient
+                // Background with subtle gradient (adapts to night mode)
                 RoundedRectangle(cornerRadius: 16)
                     .fill(
                         LinearGradient(
-                            colors: [
+                            colors: settings.nightModeEnabled ? [
+                                Color.black,
+                                Color(.systemGray5)
+                            ] : [
                                 Color(.systemBackground),
                                 Color(.systemGray6)
                             ],
@@ -52,6 +57,7 @@ struct GridItemView: View {
                             RoundedRectangle(cornerRadius: 16)
                                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
                         )
+                        .conditionalColorInvert(settings.nightModeEnabled && settings.nightModeInvertDrawings)
                 } else {
                     Image(systemName: "doc.text.fill")
                         .font(.system(size: 56, weight: .medium))
@@ -102,6 +108,19 @@ struct GridItemView: View {
                 onTap()
             }
         }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            // Haptic feedback
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+
+            // Show delete confirmation
+            showingDeleteConfirmation = true
+        }
+        .onDrag {
+            // Create NSItemProvider for drag operation
+            let itemData = try? JSONEncoder().encode(item.id.uuidString)
+            return NSItemProvider(item: itemData as? NSSecureCoding, typeIdentifier: "public.data")
+        }
         .contextMenu {
             Button {
                 onRename()
@@ -114,6 +133,17 @@ struct GridItemView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+        }
+        .alert("Delete \(item.name)?", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                // Haptic feedback
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.warning)
+                onDelete()
+            }
+        } message: {
+            Text("This item will be moved to Recently Deleted.")
         }
     }
 }

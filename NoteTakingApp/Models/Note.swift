@@ -36,13 +36,21 @@ struct NotePage: Identifiable, Codable {
     var drawingData: Data
     var thumbnail: Data?
     var template: PageTemplate
+    var textAnnotations: [TextAnnotation]
+    var imageAnnotations: [ImageAnnotation]
+    var shapeAnnotations: [ShapeAnnotation]
+    var wasCreatedInNightMode: Bool
     var createdAt: Date
     var modifiedAt: Date
 
-    init(id: UUID = UUID(), drawingData: Data = Data(), template: PageTemplate = .blank, createdAt: Date = Date(), modifiedAt: Date = Date()) {
+    init(id: UUID = UUID(), drawingData: Data = Data(), template: PageTemplate = .blank, textAnnotations: [TextAnnotation] = [], imageAnnotations: [ImageAnnotation] = [], shapeAnnotations: [ShapeAnnotation] = [], wasCreatedInNightMode: Bool = false, createdAt: Date = Date(), modifiedAt: Date = Date()) {
         self.id = id
         self.drawingData = drawingData
         self.template = template
+        self.textAnnotations = textAnnotations
+        self.imageAnnotations = imageAnnotations
+        self.shapeAnnotations = shapeAnnotations
+        self.wasCreatedInNightMode = wasCreatedInNightMode
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
     }
@@ -81,7 +89,8 @@ struct Note: Identifiable, Codable {
     init(id: UUID = UUID(), name: String, parentFolderID: UUID? = nil, defaultPageSize: PageSize = .a4) {
         self.id = id
         self.name = name
-        self.pages = [NotePage(template: AppSettings.shared.defaultPageTemplate)]
+        let nightMode = AppSettings.shared.nightModeEnabled
+        self.pages = [NotePage(template: AppSettings.shared.defaultPageTemplate, wasCreatedInNightMode: nightMode)]
         self.createdAt = Date()
         self.modifiedAt = Date()
         self.parentFolderID = parentFolderID
@@ -94,7 +103,8 @@ struct Note: Identifiable, Codable {
 
     mutating func addPage(template: PageTemplate? = nil) {
         let pageTemplate = template ?? AppSettings.shared.defaultPageTemplate
-        pages.append(NotePage(template: pageTemplate))
+        let nightMode = AppSettings.shared.nightModeEnabled
+        pages.append(NotePage(template: pageTemplate, wasCreatedInNightMode: nightMode))
         modifiedAt = Date()
     }
 

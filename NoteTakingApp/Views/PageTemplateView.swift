@@ -4,6 +4,7 @@ import UIKit
 struct PageTemplateView: UIViewRepresentable {
     let template: PageTemplate
     let size: CGSize
+    let nightMode: Bool
     @ObservedObject var settings = AppSettings.shared
 
     func makeUIView(context: Context) -> TemplateUIView {
@@ -19,6 +20,8 @@ struct PageTemplateView: UIViewRepresentable {
         uiView.gridSpacing = settings.gridSpacing
         uiView.linedSpacing = settings.linedSpacing
         uiView.resolutionScale = settings.resolutionScale
+        uiView.nightMode = nightMode
+        uiView.backgroundColor = nightMode ? .black : .white
         uiView.setNeedsDisplay()
     }
 }
@@ -29,12 +32,13 @@ class TemplateUIView: UIView {
     var gridSpacing: Double = 20.0
     var linedSpacing: Double = 30.0
     var resolutionScale: Double = 3.0
+    var nightMode: Bool = false
 
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
 
-        // Fill white background
-        context.setFillColor(UIColor.white.cgColor)
+        // Fill background (white or black based on night mode)
+        context.setFillColor(nightMode ? UIColor.black.cgColor : UIColor.white.cgColor)
         context.fill(CGRect(origin: .zero, size: size))
 
         switch template {
@@ -53,7 +57,8 @@ class TemplateUIView: UIView {
         let scale = resolutionScale
         let spacing = gridSpacing * scale
 
-        context.setStrokeColor(UIColor.gray.withAlphaComponent(0.2).cgColor)
+        let strokeColor = nightMode ? UIColor.white.withAlphaComponent(0.2) : UIColor.gray.withAlphaComponent(0.2)
+        context.setStrokeColor(strokeColor.cgColor)
         context.setLineWidth(1.0 * scale)
 
         // Vertical lines
@@ -80,7 +85,8 @@ class TemplateUIView: UIView {
         let spacing = gridSpacing * scale
         let dotSize = 2.0 * scale
 
-        context.setFillColor(UIColor.gray.withAlphaComponent(0.3).cgColor)
+        let fillColor = nightMode ? UIColor.white.withAlphaComponent(0.3) : UIColor.gray.withAlphaComponent(0.3)
+        context.setFillColor(fillColor.cgColor)
 
         var y: CGFloat = 0
         while y <= size.height {
@@ -98,7 +104,8 @@ class TemplateUIView: UIView {
         let scale = resolutionScale
         let spacing = linedSpacing * scale
 
-        context.setStrokeColor(UIColor.gray.withAlphaComponent(0.2).cgColor)
+        let strokeColor = nightMode ? UIColor.white.withAlphaComponent(0.2) : UIColor.gray.withAlphaComponent(0.2)
+        context.setStrokeColor(strokeColor.cgColor)
         context.setLineWidth(1.0 * scale)
 
         var y: CGFloat = spacing

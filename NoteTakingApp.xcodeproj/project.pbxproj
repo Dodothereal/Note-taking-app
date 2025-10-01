@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		585D7BC32E8DAAFA00B860D5 /* PDFImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BC12E8DAAFA00B860D5 /* PDFImporter.swift */; };
+		585D7BC42E8DAAFA00B860D5 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BC02E8DAAFA00B860D5 /* PDFExporter.swift */; };
+		585D7BC52E8DAAFA00B860D5 /* TrashManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BC22E8DAAFA00B860D5 /* TrashManager.swift */; };
+		585D7BC72E8DAB2600B860D5 /* ImagePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BC62E8DAB2600B860D5 /* ImagePickerView.swift */; };
+		585D7BC92E8DAB2F00B860D5 /* TrashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BC82E8DAB2F00B860D5 /* TrashView.swift */; };
+		585D7BCE2E8DAB3700B860D5 /* DeletedItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BCA2E8DAB3700B860D5 /* DeletedItem.swift */; };
+		585D7BCF2E8DAB3700B860D5 /* TextAnnotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BCD2E8DAB3700B860D5 /* TextAnnotation.swift */; };
+		585D7BD02E8DAB3700B860D5 /* ShapeAnnotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BCC2E8DAB3700B860D5 /* ShapeAnnotation.swift */; };
+		585D7BD12E8DAB3700B860D5 /* ImageAnnotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 585D7BCB2E8DAB3700B860D5 /* ImageAnnotation.swift */; };
 		58F47F5F2E8D754A009359DE /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F47F5E2E8D754A009359DE /* AppSettings.swift */; };
 		58F47F612E8D755C009359DE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F47F602E8D755C009359DE /* SettingsView.swift */; };
 		58F47F632E8D7570009359DE /* NoteSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F47F622E8D7570009359DE /* NoteSettingsView.swift */; };
@@ -27,6 +36,16 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		585D7BC02E8DAAFA00B860D5 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
+		585D7BC12E8DAAFA00B860D5 /* PDFImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFImporter.swift; sourceTree = "<group>"; };
+		585D7BC22E8DAAFA00B860D5 /* TrashManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashManager.swift; sourceTree = "<group>"; };
+		585D7BC62E8DAB2600B860D5 /* ImagePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePickerView.swift; sourceTree = "<group>"; };
+		585D7BC82E8DAB2F00B860D5 /* TrashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrashView.swift; sourceTree = "<group>"; };
+		585D7BCA2E8DAB3700B860D5 /* DeletedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeletedItem.swift; sourceTree = "<group>"; };
+		585D7BCB2E8DAB3700B860D5 /* ImageAnnotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAnnotation.swift; sourceTree = "<group>"; };
+		585D7BCC2E8DAB3700B860D5 /* ShapeAnnotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeAnnotation.swift; sourceTree = "<group>"; };
+		585D7BCD2E8DAB3700B860D5 /* TextAnnotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextAnnotation.swift; sourceTree = "<group>"; };
+		585D7BD22E8DAB4400B860D5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		58F47F5E2E8D754A009359DE /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		58F47F602E8D755C009359DE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		58F47F622E8D7570009359DE /* NoteSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteSettingsView.swift; sourceTree = "<group>"; };
@@ -69,6 +88,7 @@
 		A1000030000000000000001 /* NoteTakingApp */ = {
 			isa = PBXGroup;
 			children = (
+				585D7BD22E8DAB4400B860D5 /* Info.plist */,
 				A1000002000000000000001 /* NoteTakingAppApp.swift */,
 				A1000004000000000000001 /* ContentView.swift */,
 				A1000032000000000000001 /* Models */,
@@ -92,6 +112,10 @@
 		A1000032000000000000001 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				585D7BCA2E8DAB3700B860D5 /* DeletedItem.swift */,
+				585D7BCB2E8DAB3700B860D5 /* ImageAnnotation.swift */,
+				585D7BCC2E8DAB3700B860D5 /* ShapeAnnotation.swift */,
+				585D7BCD2E8DAB3700B860D5 /* TextAnnotation.swift */,
 				A1000010000000000000001 /* Note.swift */,
 				A1000012000000000000001 /* Folder.swift */,
 				58F47F5E2E8D754A009359DE /* AppSettings.swift */,
@@ -102,6 +126,8 @@
 		A1000033000000000000001 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				585D7BC82E8DAB2F00B860D5 /* TrashView.swift */,
+				585D7BC62E8DAB2600B860D5 /* ImagePickerView.swift */,
 				58F47F602E8D755C009359DE /* SettingsView.swift */,
 				58F47F622E8D7570009359DE /* NoteSettingsView.swift */,
 				A1000018000000000000001 /* GridView.swift */,
@@ -125,6 +151,9 @@
 		A1000035000000000000001 /* Managers */ = {
 			isa = PBXGroup;
 			children = (
+				585D7BC02E8DAAFA00B860D5 /* PDFExporter.swift */,
+				585D7BC12E8DAAFA00B860D5 /* PDFImporter.swift */,
+				585D7BC22E8DAAFA00B860D5 /* TrashManager.swift */,
 				A1000014000000000000001 /* StorageManager.swift */,
 			);
 			path = Managers;
@@ -209,10 +238,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				58F47F5F2E8D754A009359DE /* AppSettings.swift in Sources */,
+				585D7BC32E8DAAFA00B860D5 /* PDFImporter.swift in Sources */,
+				585D7BC42E8DAAFA00B860D5 /* PDFExporter.swift in Sources */,
+				585D7BC52E8DAAFA00B860D5 /* TrashManager.swift in Sources */,
 				A1000003000000000000001 /* ContentView.swift in Sources */,
 				A1000001000000000000001 /* NoteTakingAppApp.swift in Sources */,
 				A1000009000000000000001 /* Note.swift in Sources */,
+				585D7BC92E8DAB2F00B860D5 /* TrashView.swift in Sources */,
 				A1000011000000000000001 /* Folder.swift in Sources */,
+				585D7BCE2E8DAB3700B860D5 /* DeletedItem.swift in Sources */,
+				585D7BCF2E8DAB3700B860D5 /* TextAnnotation.swift in Sources */,
+				585D7BD02E8DAB3700B860D5 /* ShapeAnnotation.swift in Sources */,
+				585D7BD12E8DAB3700B860D5 /* ImageAnnotation.swift in Sources */,
 				A1000013000000000000001 /* StorageManager.swift in Sources */,
 				A1000015000000000000001 /* NotesViewModel.swift in Sources */,
 				58F47F612E8D755C009359DE /* SettingsView.swift in Sources */,
@@ -223,6 +260,7 @@
 				A1000023000000000000001 /* PageThumbnailsView.swift in Sources */,
 				A1000025000000000000001 /* BreadcrumbView.swift in Sources */,
 				A1000027000000000000002 /* PageTemplateView.swift in Sources */,
+				585D7BC72E8DAB2600B860D5 /* ImagePickerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

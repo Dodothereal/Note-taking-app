@@ -1,6 +1,18 @@
 import SwiftUI
 import PencilKit
 
+extension View {
+    func conditionalColorInvert(_ shouldInvert: Bool) -> some View {
+        Group {
+            if shouldInvert {
+                self.colorInvert()
+            } else {
+                self
+            }
+        }
+    }
+}
+
 // MARK: - Constants
 
 private enum EditorConstants {
@@ -12,6 +24,7 @@ private enum EditorConstants {
 
 struct NoteEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var settings = AppSettings.shared
     @State private var note: Note
     @State private var currentPageIndex: Int = 0
@@ -23,6 +36,8 @@ struct NoteEditorView: View {
     @State private var zoomScale: CGFloat = 1.0
     @State private var baseZoomScale: CGFloat = 1.0
     @State private var autoSaveTimer: Timer?
+    @State private var showingShareSheet = false
+    @State private var pdfURLToShare: URL?
 
     let viewModel: NotesViewModel
 
@@ -35,6 +50,11 @@ struct NoteEditorView: View {
         !note.pages.isEmpty && currentPageIndex >= 0 && currentPageIndex < note.pages.count
     }
 
+    private var shouldInvertDrawing: Bool {
+        // Simple logic: invert when night mode is enabled AND user wants drawings inverted
+        return settings.nightModeEnabled && settings.nightModeInvertDrawings
+    }
+
     var body: some View {
         NavigationStack {
             GeometryReader { geometry in
@@ -42,8 +62,8 @@ struct NoteEditorView: View {
                     if isPageValid {
                         // Current page view with zoomable scroll view
                         ZStack {
-                            // Black background to show page boundaries
-                            Color.black
+                            // Background to show page boundaries - follows system appearance
+                            (colorScheme == .dark ? Color.black : Color(white: 0.95))
                                 .ignoresSafeArea()
 
                             ZoomableScrollView(
@@ -52,25 +72,29 @@ struct NoteEditorView: View {
                                 maxZoomScale: settings.maxZoomLevel
                             ) {
                                 ZStack {
-                                    // White background
-                                    Color.white
+                                    // Background color (white or black based on night mode)
+                                    (settings.nightModeEnabled ? Color.black : Color.white)
 
                                     // Template background - with ID to force re-render
                                     PageTemplateView(
                                         template: note.pages[currentPageIndex].template,
-                                        size: note.defaultPageSize.size
+                                        size: note.defaultPageSize.size,
+                                        nightMode: settings.nightModeEnabled
                                     )
-                                    .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)")
+                                    .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)-\(settings.nightModeEnabled)")
                                     .allowsHitTesting(false)
 
                                     // Canvas for drawing (only one instance)
-                                    CanvasView(
-                                        drawing: $currentDrawing,
-                                        onDrawingChanged: { drawing in
-                                            // Update binding immediately to prevent drawing from disappearing
-                                            currentDrawing = drawing
-                                        }
-                                    )
+                                    Group {
+                                        CanvasView(
+                                            drawing: $currentDrawing,
+                                            onDrawingChanged: { drawing in
+                                                // Update binding immediately to prevent drawing from disappearing
+                                                currentDrawing = drawing
+                                            }
+                                        )
+                                    }
+                                    .conditionalColorInvert(shouldInvertDrawing)
                                 }
                                 .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
                             }
@@ -160,6 +184,11 @@ struct NoteEditorView: View {
             .sheet(isPresented: $showNoteSettings) {
                 NoteSettingsView(note: $note, currentPageIndex: currentPageIndex)
             }
+            .sheet(isPresented: $showingShareSheet) {
+                if let url = pdfURLToShare {
+                    ShareSheet(items: [url])
+                }
+            }
         }
     }
 
@@ -208,6 +237,18 @@ struct NoteEditorView: View {
 
     private var toolbarControls: some View {
         HStack(spacing: 12) {
+            // Export PDF button
+            Button {
+                exportPDF()
+            } label: {
+                Image(systemName: "arrow.up.doc")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.blue)
+            }
+
+            Divider()
+                .frame(height: 20)
+
             // Note settings button
             Button {
                 showNoteSettings = true
@@ -394,6 +435,19 @@ struct NoteEditorView: View {
         print("✅ Note saved successfully")
         dismiss()
     }
+
+    private func exportPDF() {
+        // Save current drawing first
+        updateDrawing(at: currentPageIndex, with: currentDrawing)
+
+        // Export to PDF
+        if let pdfURL = PDFExporter.exportNote(note, nightMode: settings.nightModeEnabled) {
+            pdfURLToShare = pdfURL
+            showingShareSheet = true
+        } else {
+            print("❌ Failed to export PDF")
+        }
+    }
 }
 
 // MARK: - Canvas View Wrapper
@@ -417,6 +471,9 @@ struct CanvasView: UIViewRepresentable {
 
         // Ensure canvas is transparent and doesn't obscure the template
         canvasView.layer.isOpaque = false
+
+        // Enable rasterization for filters to work properly
+        canvasView.layer.shouldRasterize = false
 
         print("🖌️ Canvas created (transparent, pencilOnly, scale: \(UIScreen.main.scale)), setting up tool picker...")
 
@@ -700,4 +757,18 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
             }
         }
     }
+}
+
+
+// MARK: - Share Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -6,6 +6,7 @@ struct GridView: View {
     @State private var showingNewNoteAlert = false
     @State private var showingRenameAlert = false
     @State private var showingSettings = false
+    @State private var showingPDFImporter = false
     @State private var newItemName = ""
     @State private var selectedNote: Note?
     @State private var itemToRename: FileSystemItem?
@@ -85,18 +86,28 @@ struct GridView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
+                        Menu {
+                            Button {
+                                newItemName = ""
+                                showingNewNoteAlert = true
+                            } label: {
+                                Label("New Note", systemImage: "doc.badge.plus")
+                            }
+
+                            Button {
+                                showingPDFImporter = true
+                            } label: {
+                                Label("Import PDF", systemImage: "doc.badge.arrow.up")
+                            }
+                        } label: {
+                            Label("New Note", systemImage: "doc.badge.plus")
+                        }
+
                         Button {
                             newItemName = ""
                             showingNewFolderAlert = true
                         } label: {
                             Label("New Folder", systemImage: "folder.badge.plus")
-                        }
-
-                        Button {
-                            newItemName = ""
-                            showingNewNoteAlert = true
-                        } label: {
-                            Label("New Note", systemImage: "doc.badge.plus")
                         }
                     }
                 }
@@ -147,6 +158,13 @@ struct GridView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
             }
+            .fileImporter(
+                isPresented: $showingPDFImporter,
+                allowedContentTypes: [.pdf],
+                allowsMultipleSelection: false
+            ) { result in
+                handlePDFImport(result)
+            }
         }
     }
 
@@ -196,6 +214,32 @@ struct GridView: View {
             if let fullNote = viewModel.loadNote(id: note.id) {
                 selectedNote = fullNote
             }
+        }
+    }
+
+    private func handlePDFImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+
+            // Get file name without extension
+            let fileName = url.deletingPathExtension().lastPathComponent
+
+            // Import PDF
+            if let note = PDFImporter.importPDF(from: url, name: fileName, parentFolderID: viewModel.currentFolderID) {
+                // Save the imported note
+                viewModel.saveNote(note)
+                print("✅ PDF imported successfully as note: \(note.name)")
+
+                // Open the newly imported note
+                if let fullNote = viewModel.loadNote(id: note.id) {
+                    selectedNote = fullNote
+                }
+            } else {
+                print("❌ Failed to import PDF")
+            }
+        case .failure(let error):
+            print("❌ PDF import error: \(error.localizedDescription)")
         }
     }
 }
