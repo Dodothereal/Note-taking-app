@@ -11,6 +11,7 @@ class NotesViewModel: ObservableObject {
     @Published var showError = false
 
     private let storage = StorageManager.shared
+    private let settings = AppSettings.shared
 
     init() {
         loadItems()
@@ -21,9 +22,23 @@ class NotesViewModel: ObservableObject {
     func loadItems() {
         do {
             items = try storage.loadItems(in: currentFolderID)
+            sortItems()
             folderPath = try storage.getFolderPath(for: currentFolderID)
         } catch {
             showErrorMessage("Failed to load items: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Sorting
+
+    func sortItems() {
+        switch settings.sortOption {
+        case .modifiedDate:
+            items.sort { $0.modifiedAt > $1.modifiedAt }
+        case .name:
+            items.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .createdDate:
+            items.sort { $0.createdAt > $1.createdAt }
         }
     }
 
@@ -55,8 +70,8 @@ class NotesViewModel: ObservableObject {
         do {
             try storage.saveFolder(folder)
             // Incremental update: add new folder to items and re-sort
-            items.insert(.folder(folder), at: 0) // Insert at beginning since it's most recent
-            items.sort { $0.modifiedAt > $1.modifiedAt }
+            items.insert(.folder(folder), at: 0)
+            sortItems()
         } catch {
             showErrorMessage("Failed to create folder: \(error.localizedDescription)")
         }
@@ -69,8 +84,8 @@ class NotesViewModel: ObservableObject {
             try storage.saveNote(note)
             print("✅ Note created and saved: \(note.id)")
             // Incremental update: add new note to items and re-sort
-            items.insert(.note(note), at: 0) // Insert at beginning since it's most recent
-            items.sort { $0.modifiedAt > $1.modifiedAt }
+            items.insert(.note(note), at: 0)
+            sortItems()
             return note
         } catch {
             print("❌ Failed to create note: \(error)")
@@ -123,9 +138,27 @@ class NotesViewModel: ObservableObject {
                 }
             }
             // Re-sort since modifiedAt changed
-            items.sort { $0.modifiedAt > $1.modifiedAt }
+            sortItems()
         } catch {
             showErrorMessage("Failed to rename item: \(error.localizedDescription)")
+        }
+    }
+
+    func updateFolderColor(_ folder: Folder, colorHex: String?) {
+        do {
+            try storage.updateFolderColor(id: folder.id, colorHex: colorHex)
+            // Incremental update: update folder in array
+            if let index = items.firstIndex(where: { $0.id == folder.id }) {
+                if case .folder(var updatedFolder) = items[index] {
+                    updatedFolder.colorHex = colorHex
+                    updatedFolder.modifiedAt = Date()
+                    items[index] = .folder(updatedFolder)
+                }
+            }
+            // Re-sort since modifiedAt changed
+            sortItems()
+        } catch {
+            showErrorMessage("Failed to update folder color: \(error.localizedDescription)")
         }
     }
 
@@ -160,7 +193,7 @@ class NotesViewModel: ObservableObject {
             if let index = items.firstIndex(where: { $0.id == note.id }) {
                 items[index] = .note(note)
                 // Re-sort since modifiedAt may have changed
-                items.sort { $0.modifiedAt > $1.modifiedAt }
+                sortItems()
             }
         } catch {
             print("❌ Failed to save note: \(error)")

@@ -371,6 +371,13 @@ class StorageManager {
         try saveFolder(folder)
     }
 
+    func updateFolderColor(id: UUID, colorHex: String?) throws {
+        var folder = try loadFolder(id: id)
+        folder.colorHex = colorHex
+        folder.modifiedAt = Date()
+        try saveFolder(folder)
+    }
+
     // MARK: - Breadcrumb Path
 
     func getFolderPath(for folderID: UUID?) throws -> [Folder] {

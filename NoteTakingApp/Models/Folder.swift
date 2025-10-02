@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct Folder: Identifiable, Codable, Equatable {
     let id: UUID
@@ -6,13 +7,22 @@ struct Folder: Identifiable, Codable, Equatable {
     var createdAt: Date
     var modifiedAt: Date
     var parentFolderID: UUID?
+    var colorHex: String?
 
-    init(id: UUID = UUID(), name: String, parentFolderID: UUID? = nil) {
+    init(id: UUID = UUID(), name: String, parentFolderID: UUID? = nil, colorHex: String? = nil) {
         self.id = id
         self.name = name
         self.createdAt = Date()
         self.modifiedAt = Date()
         self.parentFolderID = parentFolderID
+        self.colorHex = colorHex
+    }
+
+    var color: Color {
+        if let colorHex = colorHex, let color = Color(hex: colorHex) {
+            return color
+        }
+        return .blue
     }
 }
 
@@ -44,6 +54,15 @@ enum FileSystemItem: Identifiable, Equatable {
             return folder.modifiedAt
         case .note(let note):
             return note.modifiedAt
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .folder(let folder):
+            return folder.createdAt
+        case .note(let note):
+            return note.createdAt
         }
     }
 

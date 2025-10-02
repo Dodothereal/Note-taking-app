@@ -39,6 +39,7 @@ struct NoteEditorView: View {
     @State private var showingShareSheet = false
     @State private var pdfURLToShare: URL?
     @State private var isDirty = false
+    @State private var scrollViewProxy: ScrollViewProxy?
 
     let viewModel: NotesViewModel
 
@@ -60,50 +61,106 @@ struct NoteEditorView: View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
                 if isPageValid {
-                    // Current page view with zoomable scroll view
+                    // Continuous scrolling view with all pages
                     ZStack {
                         // Background to show page boundaries - follows system appearance
                         (colorScheme == .dark ? Color.black : Color(white: 0.95))
                             .ignoresSafeArea()
 
-                        ZoomableScrollView(
-                            zoomScale: $zoomScale,
-                            doubleTapToReset: true,
-                            maxZoomScale: settings.maxZoomLevel
-                        ) {
-                            ZStack {
-                                // Background color (white or black based on night mode)
-                                (settings.nightModeEnabled ? Color.black : Color.white)
+                        // Single zoomable scroll view - handles BOTH vertical scrolling AND zoom/pan
+                        ScrollViewReader { proxy in
+                            ZoomableScrollView(
+                                zoomScale: $zoomScale,
+                                doubleTapToReset: true,
+                                maxZoomScale: settings.maxZoomLevel
+                            ) {
+                                VStack(spacing: 40) {
+                                    ForEach(Array(note.pages.enumerated()), id: \.element.id) { index, page in
+                                        ZStack {
+                                            // Background color (white or black based on night mode)
+                                            (settings.nightModeEnabled ? Color.black : Color.white)
 
-                                // Template background - with ID to force re-render
-                                PageTemplateView(
-                                    template: note.pages[currentPageIndex].template,
-                                    size: note.defaultPageSize.size,
-                                    nightMode: settings.nightModeEnabled
-                                )
-                                .id("\(note.pages[currentPageIndex].id)-\(note.pages[currentPageIndex].template)-\(settings.nightModeEnabled)")
-                                .allowsHitTesting(false)
+                                            // Template background - directly access note.pages to get live updates
+                                            PageTemplateView(
+                                                template: note.pages[index].template,
+                                                size: note.defaultPageSize.size,
+                                                nightMode: settings.nightModeEnabled
+                                            )
+                                            .id("\(note.pages[index].id)-\(note.pages[index].template)-\(settings.nightModeEnabled)")
+                                            .allowsHitTesting(false)
 
-                                // Canvas for drawing (only one instance)
-                                Group {
-                                    CanvasView(
-                                        drawing: $currentDrawing,
-                                        onDrawingChanged: { drawing in
-                                            // Update binding immediately to prevent drawing from disappearing
-                                            currentDrawing = drawing
-                                            isDirty = true
+                                            // Canvas for drawing - only active for current page
+                                            if index == currentPageIndex {
+                                                Group {
+                                                    CanvasView(
+                                                        drawing: $currentDrawing,
+                                                        onDrawingChanged: { drawing in
+                                                            currentDrawing = drawing
+                                                            isDirty = true
+                                                        }
+                                                    )
+                                                }
+                                                .conditionalColorInvert(shouldInvertDrawing)
+                                            } else {
+                                                // Show rendered drawing for other pages
+                                                Image(uiImage: page.drawing.image(from: CGRect(origin: .zero, size: note.defaultPageSize.size), scale: 1.0))
+                                                    .resizable()
+                                                    .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
+                                                    .conditionalColorInvert(shouldInvertDrawing)
+                                                    .allowsHitTesting(false)
+                                            }
                                         }
-                                    )
+                                        .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
+                                        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                                        .id("\(index)-\(note.pages[index].template.rawValue)")
+                                        .background(
+                                            GeometryReader { geo in
+                                                Color.clear.preference(
+                                                    key: PageVisibilityPreferenceKey.self,
+                                                    value: [PageVisibility(index: index, bounds: geo.frame(in: .named("scroll")))]
+                                                )
+                                            }
+                                        )
+                                    }
                                 }
-                                .conditionalColorInvert(shouldInvertDrawing)
+                                .padding(.vertical, 20)
+                                .coordinateSpace(name: "scroll")
+                                .onPreferenceChange(PageVisibilityPreferenceKey.self) { pages in
+                                    // Only update if not zoomed in
+                                    guard zoomScale <= 1.01 else { return }
+
+                                    // Find the page closest to the center of the screen
+                                    let screenCenter = geometry.size.height / 2
+                                    if let closestPage = pages.min(by: { abs($0.bounds.midY - screenCenter) < abs($1.bounds.midY - screenCenter) }) {
+                                        if currentPageIndex != closestPage.index {
+                                            // Save current page before switching
+                                            updateDrawing(at: currentPageIndex, with: currentDrawing)
+
+                                            // Reset zoom when switching pages
+                                            zoomScale = 1.0
+                                            baseZoomScale = 1.0
+
+                                            // Skip onChange handler since we're handling the page change here
+                                            skipOnChange = true
+                                            currentPageIndex = closestPage.index
+                                            loadCurrentPage()
+                                        }
+                                    }
+                                }
                             }
-                            .frame(width: note.defaultPageSize.size.width, height: note.defaultPageSize.size.height)
+                            .onAppear {
+                                scrollViewProxy = proxy
+                                // Scroll to current page on appear - but this requires the proxy to work with ZoomableScrollView
+                                // which it doesn't since ZoomableScrollView is UIKit
+                            }
                         }
                     }
                     .overlay(pageIndicator)
                     .overlay {
                         if #available(iOS 26.0, *) {
                             floatingButtons
+                        } else {
+                            floatingButtonsFallback
                         }
                     }
                 } else {
@@ -135,21 +192,31 @@ struct NoteEditorView: View {
         }
         .ignoresSafeArea()
         .onChange(of: currentPageIndex) { oldIndex, newIndex in
-            // Skip if flagged (e.g., during addPage/deletePage which handle their own loading)
+            // Skip if flagged (e.g., change came from scroll position tracking)
             if skipOnChange {
                 skipOnChange = false
                 return
             }
 
-            // Save drawing when page changes (via swipe, thumbnail tap, etc.)
+            // Handle page changes from thumbnail tap, add/delete page, etc.
             if oldIndex >= 0 && oldIndex < note.pages.count && oldIndex != newIndex {
                 print("📄 Page changed from \(oldIndex) to \(newIndex), saving and loading")
 
                 // Save the current drawing to the OLD page (before we load the new page)
                 updateDrawing(at: oldIndex, with: currentDrawing)
 
-                // Now load the new page
+                // Load the new page
                 loadCurrentPage()
+
+                // Reset zoom
+                zoomScale = 1.0
+                baseZoomScale = 1.0
+
+                // Scroll to the new page
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    let pageID = "\(newIndex)-\(note.pages[newIndex].template.rawValue)"
+                    scrollViewProxy?.scrollTo(pageID, anchor: .center)
+                }
             }
         }
         .onAppear {
@@ -168,6 +235,10 @@ struct NoteEditorView: View {
                 currentPageIndex = 0
             }
             loadCurrentPage()
+
+            // Reset zoom
+            zoomScale = 1.0
+            baseZoomScale = 1.0
 
             // Start auto-save timer
             startAutoSave()
@@ -224,6 +295,78 @@ struct NoteEditorView: View {
                 .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                 .padding(16)
             }
+        }
+    }
+
+    private var floatingButtonsFallback: some View {
+        VStack {
+            HStack {
+                // Done button - top left
+                Button {
+                    saveAndDismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Done")
+                            .font(.body.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial)
+                    .clipShape(Capsule())
+                }
+                .padding(.leading, 16)
+                .padding(.top, 16)
+
+                Spacer()
+
+                // Control buttons - top right
+                HStack(spacing: 12) {
+                    // Export PDF button
+                    Button {
+                        exportPDF()
+                    } label: {
+                        Image(systemName: "arrow.up.doc")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.regularMaterial)
+                            .clipShape(Circle())
+                    }
+
+                    // Note settings button
+                    Button {
+                        showNoteSettings = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.regularMaterial)
+                            .clipShape(Circle())
+                    }
+
+                    // Sidebar toggle
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            showPageThumbnails.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showPageThumbnails ? "sidebar.right" : "sidebar.left")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .background(.regularMaterial)
+                            .clipShape(Circle())
+                    }
+                }
+                .padding(.trailing, 16)
+                .padding(.top, 16)
+            }
+
+            Spacer()
         }
     }
 
@@ -388,9 +531,18 @@ struct NoteEditorView: View {
 
         print("✅ New page added. Total pages: \(note.pages.count), Current index: \(currentPageIndex)")
 
-        // Load new page after state update
+        // Load new page and scroll to it
         DispatchQueue.main.async {
             self.loadCurrentPage()
+
+            // Reset zoom
+            self.zoomScale = 1.0
+            self.baseZoomScale = 1.0
+
+            withAnimation(.easeInOut(duration: 0.3)) {
+                let pageID = "\(self.currentPageIndex)-\(self.note.pages[self.currentPageIndex].template.rawValue)"
+                self.scrollViewProxy?.scrollTo(pageID, anchor: .center)
+            }
         }
     }
 
@@ -422,9 +574,18 @@ struct NoteEditorView: View {
 
         print("✅ Page deleted. Total pages now: \(note.pages.count)")
 
-        // Load updated page after state update
+        // Load updated page and scroll to it
         DispatchQueue.main.async {
             self.loadCurrentPage()
+
+            // Reset zoom
+            self.zoomScale = 1.0
+            self.baseZoomScale = 1.0
+
+            withAnimation(.easeInOut(duration: 0.3)) {
+                let pageID = "\(self.currentPageIndex)-\(self.note.pages[self.currentPageIndex].template.rawValue)"
+                self.scrollViewProxy?.scrollTo(pageID, anchor: .center)
+            }
         }
     }
 
@@ -830,4 +991,19 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Page Visibility Tracking
+
+struct PageVisibility: Equatable {
+    let index: Int
+    let bounds: CGRect
+}
+
+struct PageVisibilityPreferenceKey: PreferenceKey {
+    static var defaultValue: [PageVisibility] = []
+
+    static func reduce(value: inout [PageVisibility], nextValue: () -> [PageVisibility]) {
+        value.append(contentsOf: nextValue())
+    }
 }

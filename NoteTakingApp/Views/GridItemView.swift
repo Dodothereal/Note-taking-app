@@ -1,13 +1,64 @@
 import SwiftUI
 
+struct FolderColorPickerView: View {
+    @Binding var selectedColor: Color
+    let onDismiss: () -> Void
+    let onSave: () -> Void
+
+    @State private var showingCustomPicker = false
+
+    private let colors: [Color] = [
+        .blue, .purple, .pink, .red, .orange, .yellow,
+        .green, .teal, .cyan, .indigo, .mint
+    ]
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Choose Color")
+                .font(.headline)
+                .padding(.top)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
+                ForEach(colors, id: \.self) { color in
+                    Circle()
+                        .fill(color)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.primary, lineWidth: 3)
+                                .opacity(color.toHex() == selectedColor.toHex() ? 1 : 0)
+                        )
+                        .onTapGesture {
+                            selectedColor = color
+                            onSave()
+                        }
+                }
+
+                ColorPicker("", selection: $selectedColor, supportsOpacity: false)
+                    .labelsHidden()
+                    .frame(width: 44, height: 44)
+                    .onChange(of: selectedColor) { _ in
+                        onSave()
+                    }
+            }
+            .padding(.horizontal)
+        }
+        .padding(.bottom)
+        .presentationDetents([.height(200)])
+    }
+}
+
 struct GridItemView: View {
     let item: FileSystemItem
     let onTap: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
+    let onColorChange: ((String?) -> Void)?
 
     @State private var isPressed = false
     @State private var showingDeleteConfirmation = false
+    @State private var showingColorPicker = false
+    @State private var selectedColor: Color = .blue
     @EnvironmentObject var settings: AppSettings
 
     var body: some View {
@@ -36,17 +87,17 @@ struct GridItemView: View {
                     .fill(.ultraThinMaterial)
                     .aspectRatio(1, contentMode: .fit)
 
-                if item.isFolder {
+                if item.isFolder, case .folder(let folder) = item {
                     Image(systemName: "folder.fill")
                         .font(.system(size: 56, weight: .medium))
                         .foregroundStyle(
                             LinearGradient(
-                                colors: [.blue, .blue.opacity(0.7)],
+                                colors: [folder.color, folder.color.opacity(0.7)],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
-                        .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                        .shadow(color: folder.color.opacity(0.3), radius: 8, x: 0, y: 4)
                 } else if case .note(let note) = item, let thumbnailData = note.thumbnailData,
                           let uiImage = UIImage(data: thumbnailData) {
                     Image(uiImage: uiImage)
@@ -122,6 +173,17 @@ struct GridItemView: View {
             return NSItemProvider(item: itemData as? NSSecureCoding, typeIdentifier: "public.data")
         }
         .contextMenu {
+            if item.isFolder {
+                Button {
+                    if case .folder(let folder) = item {
+                        selectedColor = folder.color
+                    }
+                    showingColorPicker = true
+                } label: {
+                    Label("Change Color", systemImage: "paintpalette")
+                }
+            }
+
             Button {
                 onRename()
             } label: {
@@ -144,6 +206,16 @@ struct GridItemView: View {
             }
         } message: {
             Text("This item will be moved to Recently Deleted.")
+        }
+        .sheet(isPresented: $showingColorPicker) {
+            FolderColorPickerView(
+                selectedColor: $selectedColor,
+                onDismiss: { showingColorPicker = false },
+                onSave: {
+                    onColorChange?(selectedColor.toHex())
+                    showingColorPicker = false
+                }
+            )
         }
     }
 }

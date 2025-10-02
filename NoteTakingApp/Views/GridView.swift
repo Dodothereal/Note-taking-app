@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GridView: View {
     @StateObject private var viewModel = NotesViewModel()
+    @EnvironmentObject var settings: AppSettings
     @State private var showingNewFolderAlert = false
     @State private var showingNewNoteAlert = false
     @State private var showingRenameAlert = false
@@ -46,6 +47,11 @@ struct GridView: View {
                                     },
                                     onDelete: {
                                         viewModel.deleteItem(item)
+                                    },
+                                    onColorChange: { colorHex in
+                                        if case .folder(let folder) = item {
+                                            viewModel.updateFolderColor(folder, colorHex: colorHex)
+                                        }
                                     }
                                 )
                             }
@@ -86,6 +92,24 @@ struct GridView: View {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 16) {
+                        Menu {
+                            ForEach(SortOption.allCases, id: \.self) { option in
+                                Button {
+                                    settings.sortOption = option
+                                    viewModel.sortItems()
+                                } label: {
+                                    HStack {
+                                        Text(option.rawValue)
+                                        if settings.sortOption == option {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Sort", systemImage: "arrow.up.arrow.down")
+                        }
+
                         Menu {
                             Button {
                                 newItemName = ""
